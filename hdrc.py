@@ -13,6 +13,8 @@ import numpy as np
 import cv2
 import argparse
 from skimage import filters
+from scipy.sparse import csr_matrix
+from tqdm import tqdm
 
 def build_gaussian_pyramid(img):
     '''
@@ -32,18 +34,19 @@ def calculate_pyramid_gradient_magnitudes(pyramid_i, level):
     grad_y = np.zeros(pyramid_i.shape).astype(np.float32)
     for j in range(pyramid_i.shape[0]):
         for i in range(pyramid_i.shape[1]):
-            # Column boundary conditions 
+            # Assume the image is padded by same values as the edges.
+            # Column boundary conditions.
             if j == 0:
-                grad_y[j, i] = (pyramid_i[j + 1, i] - pyramid_i[j, i]) / (2 ** level)
+                grad_y[j, i] = (pyramid_i[j + 1, i] - pyramid_i[j, i]) / (2 ** (level + 1))
             elif j == pyramid_i.shape[0] - 1:
-                grad_y[j, i] = (pyramid_i[j, i] - pyramid_i[j - 1, i]) / (2 ** level)
+                grad_y[j, i] = (pyramid_i[j, i] - pyramid_i[j - 1, i]) / (2 ** (level + 1))
             else:
                 grad_y[j, i] = (pyramid_i[j + 1, i] - pyramid_i[j - 1, i]) / (2 ** (level + 1))
             # Row boundary condition
             if i == 0:
-                grad_x[j, i] = (pyramid_i[j, i + 1] - pyramid_i[j, i]) / (2 ** level)
+                grad_x[j, i] = (pyramid_i[j, i + 1] - pyramid_i[j, i]) / (2 ** (level + 1))
             elif i == pyramid_i.shape[1] - 1:
-                grad_x[j, i] = (pyramid_i[j, i] - pyramid_i[j, i - 1]) / (2 ** level)
+                grad_x[j, i] = (pyramid_i[j, i] - pyramid_i[j, i - 1]) / (2 ** (level + 1))
             else:
                 grad_x[j, i] = (pyramid_i[j, i + 1] - pyramid_i[j, i - 1]) / (2 ** (level + 1))
     return np.sqrt(grad_x ** 2 + grad_y ** 2)
@@ -86,14 +89,10 @@ def calculate_attenuated_gradients(lum_log, phi):
     attenuated_grad_y = np.zeros_like(lum_log, dtype=np.float32)
     for j in range(lum_log.shape[0]):
         for i in range(lum_log.shape[1]):
-            if i + 1 >= lum_log.shape[1]:
-                attenuated_grad_x[j, i] = (lum_log[j, lum_log.shape[1] - 2] - lum_log[j, i]) * 0.5 * (phi[j, lum_log.shape[1] - 2] + phi[j, i])
-            else:
-                attenuated_grad_x[j, i] = (lum_log[j, i + 1] - lum_log[j, i]) * 0.5 * (phi[j, i + 1] + phi[j, i])
-            if j + 1 >= lum_log.shape[0]:
-                attenuated_grad_y[j, i] = (lum_log[lum_log.shape[0] - 2, i] - lum_log[j, i]) * 0.5 * (phi[lum_log.shape[0] - 2, i] + phi[j, i])
-            else:
-                attenuated_grad_y[j, i] = (lum_log[j + 1, i] - lum_log[j, i]) * 0.5 * (phi[j + 1, i] + phi[j, i])
+            if i < lum_log.shape[1] - 1:
+                attenuated_grad_x[j, i] = (lum_log[j, i + 1] - lum_log[j, i]) * phi[j, i]
+            if j < lum_log.shape[0] - 1:
+                attenuated_grad_y[j, i] = (lum_log[j + 1, i] - lum_log[j, i]) * phi[j, i]
     return attenuated_grad_x, attenuated_grad_y
 
 def calculate_divergence(Gx, Gy):
@@ -108,25 +107,61 @@ def calculate_divergence(Gx, Gy):
                 divG[j, i] -= Gx[j, i - 1]
             if j > 0:
                 divG[j, i] -= Gy[j - 1, i]
-            if i == 0:
-                divG[j, i] += Gx[j, i]
-            if j == 0:
-                divG[j, i] += Gy[j, i]
     return divG
 
 def solve_poisson_equation(div_G, args):
     '''
     Apply the Jacobi iteration method to solve the Poisson equation and get I(x, y) from G(x, y)
     '''
-    I = np.zeros_like(div_G, dtype=np.float32)
-    for _ in range(args.max_iterations):
-        prev_I = I.copy()
-        for i in range(1, I.shape[0] - 1):
-            for j in range(1, I.shape[1] - 1):
-                I[i, j] = 0.25 * (prev_I[i+1, j] + prev_I[i-1, j] + prev_I[i, j+1] + prev_I[i, j-1] - div_G[i, j])
-        if np.linalg.norm(I - prev_I) < args.tolerance:
+    H, W = div_G.shape[:2]
+
+    # Jacobi iterations
+    lu_data, lu_row_indices, lu_col_indices = [], [], []
+    d_data, d_indices = [], np.arange(H*W)
+    for j in range(H):
+        for i in range(W):
+            D = 0
+            if j > 0:
+                lu_data.append(1)
+                lu_row_indices.append(j*W+i)
+                lu_col_indices.append((j-1)*W+i)
+                D -= 1
+            if i > 0:
+                lu_data.append(1)
+                lu_row_indices.append(j*W+i)
+                lu_col_indices.append(j*W+i-1)
+                D -= 1
+            if i < W - 1:
+                lu_data.append(1)
+                lu_row_indices.append(j*W+i)
+                lu_col_indices.append(j*W+i+1)
+                D -= 1
+            if j < H - 1:
+                lu_data.append(1)
+                lu_row_indices.append(j*W+i)
+                lu_col_indices.append((j+1)*W+i)
+                D -= 1
+            d_data.append(D)
+    D_csr = csr_matrix((d_data, (d_indices, d_indices)), shape=(H * W, H * W))
+    LU_csr = csr_matrix((lu_data, (lu_row_indices, lu_col_indices)), shape=(H * W, H * W))
+    b_csr = div_G.flatten()
+
+    x = np.zeros_like(b_csr, dtype=np.float32)
+    for iter in tqdm(range(args.max_iterations)):
+        x_prev = x.copy()
+
+        neighbor = LU_csr.dot(x_prev.flatten())
+        x = 1.0 / D_csr.diagonal() * (b_csr - neighbor)
+        
+        delta = np.linalg.norm(x - x_prev)
+        if iter % 100 == 0:
+            print(delta)
+        if delta < args.tolerance:
             break
-    return I
+    return x.reshape(H, W)
+
+def normalize(img):
+    return (img - np.min(img)) / (np.max(img) - np.min(img))
 
 if __name__ == "__main__":
     arg_parser = argparse.ArgumentParser(description="Gradient Domain HDR Radiance Map Tone Mapping")
@@ -136,8 +171,9 @@ if __name__ == "__main__":
     arg_parser.add_argument("--alpha", type=float, default=0.18, help="Max \"small\" gradient")
     arg_parser.add_argument("--beta", type=float, default=0.87, help="Attenuation factor for large gradients")
     arg_parser.add_argument("--saturation", type=float, default=0.55, help="Color saturation of the resulting image")
-    arg_parser.add_argument("--max_iterations", type=int, default=1000, help="Max number of iterations to run the Jacobi Poisson solver")
-    arg_parser.add_argument("--tolerance", type=float, default=1e-6, help="Tolerance to stop iterating the Jacobi Poisson solver")
+    arg_parser.add_argument("--max_iterations", type=int, default=3000, help="Max number of iterations to run the Jacobi Poisson solver")
+    arg_parser.add_argument("--tolerance", type=float, default=1e-1, help="Tolerance to stop iterating the Jacobi Poisson solver")
+    arg_parser.add_argument("--gamma", type=float, default=2.2, help="Global gamma tone mapping")
     args = arg_parser.parse_args()
 
     # Read HDR radiance map
@@ -179,14 +215,18 @@ if __name__ == "__main__":
     I = np.exp(I_log)
 
     # Produce the LDR output
-    output = np.zeros(hdr_lum_log.shape).astype(np.float32)
+    output = np.zeros(hdr_rad_map_rgb.shape).astype(np.float32)
     for c in range(3):
         output[:, :, c] = (hdr_rad_map_rgb[:, :, c] / hdr_rad_map_xyz[:, :, 1]) ** args.saturation * I
     
     # Rescale the output
-    output = (np.clip(output, 0.0, 1.0) * 255.0).astype(np.uint8)[:, :, ::-1]
+    output_clip = (np.clip(output, 0.0, 1.0) * 255.0).astype(np.uint8)[:, :, ::-1]
+    output_norm = (normalize(output) * 255.0).astype(np.uint8)[:, :, ::-1]
 
     # Save the output
-    cv2.imwrite(f"{args.output_folder}/{args.source.split('/')[-1][:-4]}_ldr.png", output)
+    cv2.imwrite(f"{args.output_folder}/{args.source.split('/')[-1][:-4]}_ldr_clip.png", output_clip)
+    cv2.imwrite(f"{args.output_folder}/{args.source.split('/')[-1][:-4]}_ldr_norm.png", output_norm)
+    cv2.imwrite(f"{args.output_folder}/{args.source.split('/')[-1][:-4]}_ldr_linear.png", hdr_rad_map_rgb[:, :, ::-1] * 255.0)
+    cv2.imwrite(f"{args.output_folder}/{args.source.split('/')[-1][:-4]}_ldr_gamma.png", np.power(hdr_rad_map_rgb[:, :, ::-1], 1.0 / args.gamma) * 255.0)
 
     print("Done.")
