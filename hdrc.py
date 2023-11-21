@@ -154,8 +154,8 @@ def solve_poisson_equation(div_G, args):
         x = 1.0 / D_csr.diagonal() * (b_csr - neighbor)
         
         delta = np.linalg.norm(x - x_prev)
-        if iter % 100 == 0:
-            print(delta)
+        # if iter % 100 == 0:
+            # print(delta)
         if delta < args.tolerance:
             break
     return x.reshape(H, W)
@@ -171,7 +171,7 @@ if __name__ == "__main__":
     arg_parser.add_argument("--alpha", type=float, default=0.18, help="Max \"small\" gradient")
     arg_parser.add_argument("--beta", type=float, default=0.87, help="Attenuation factor for large gradients")
     arg_parser.add_argument("--saturation", type=float, default=0.55, help="Color saturation of the resulting image")
-    arg_parser.add_argument("--max_iterations", type=int, default=3000, help="Max number of iterations to run the Jacobi Poisson solver")
+    arg_parser.add_argument("--max_iterations", type=int, default=10000, help="Max number of iterations to run the Jacobi Poisson solver")
     arg_parser.add_argument("--tolerance", type=float, default=1e-1, help="Tolerance to stop iterating the Jacobi Poisson solver")
     arg_parser.add_argument("--gamma", type=float, default=2.2, help="Global gamma tone mapping")
     args = arg_parser.parse_args()
@@ -201,8 +201,9 @@ if __name__ == "__main__":
     attenuation = scaling_factor_pyramid[-1]
     for level in range(len(scaling_factor_pyramid)-2, -1, -1):
         attenuation = resize(attenuation, scaling_factor_pyramid[level].shape) * scaling_factor_pyramid[level]
+    attenuation = np.clip(attenuation, 0.0, 1.0)
     if args.save_att:
-        cv2.imwrite(f"{args.output_folder}/{args.source.split('/')[-1][:-4]}_attenuation.png", (np.clip(attenuation, 0.0, 1.0) * 255.0).astype(np.uint8))
+        cv2.imwrite(f"{args.output_folder}/{args.source.split('/')[-1][:-4]}_attenuation.png", (attenuation * 255.0).astype(np.uint8))
 
     # Calculate attenuated gradients, namely G(x, y)
     attenuated_grad_x, attenuated_grad_y = calculate_attenuated_gradients(hdr_lum_log, attenuation)
@@ -218,15 +219,25 @@ if __name__ == "__main__":
     output = np.zeros(hdr_rad_map_rgb.shape).astype(np.float32)
     for c in range(3):
         output[:, :, c] = (hdr_rad_map_rgb[:, :, c] / hdr_rad_map_xyz[:, :, 1]) ** args.saturation * I
-    
+
     # Rescale the output
     output_clip = (np.clip(output, 0.0, 1.0) * 255.0).astype(np.uint8)[:, :, ::-1]
+    output_clip_gamma = (np.clip(np.power(output, 1.0 / args.gamma), 0.0, 1.0) * 255.0).astype(np.uint8)[:, :, ::-1]
+    
     output_norm = (normalize(output) * 255.0).astype(np.uint8)[:, :, ::-1]
+    output_norm_gamma = (normalize(np.power(output, 1.0 / args.gamma)) * 255.0).astype(np.uint8)[:, :, ::-1]
 
-    # Save the output
+    output_linear = (normalize(hdr_rad_map_rgb) * 255.0).astype(np.uint8)[:, :, ::-1]
+    output_gamma = (normalize(np.power(hdr_rad_map_rgb, 1.0 / args.gamma)) * 255.0).astype(np.uint8)[:, :, ::-1]
+
+    # save the output
     cv2.imwrite(f"{args.output_folder}/{args.source.split('/')[-1][:-4]}_ldr_clip.png", output_clip)
+    cv2.imwrite(f"{args.output_folder}/{args.source.split('/')[-1][:-4]}_ldr_clip_gamma.png", output_clip_gamma)
+
     cv2.imwrite(f"{args.output_folder}/{args.source.split('/')[-1][:-4]}_ldr_norm.png", output_norm)
-    cv2.imwrite(f"{args.output_folder}/{args.source.split('/')[-1][:-4]}_ldr_linear.png", hdr_rad_map_rgb[:, :, ::-1] * 255.0)
-    cv2.imwrite(f"{args.output_folder}/{args.source.split('/')[-1][:-4]}_ldr_gamma.png", np.power(hdr_rad_map_rgb[:, :, ::-1], 1.0 / args.gamma) * 255.0)
+    cv2.imwrite(f"{args.output_folder}/{args.source.split('/')[-1][:-4]}_ldr_norm_gamma.png", output_norm_gamma)
+
+    cv2.imwrite(f"{args.output_folder}/{args.source.split('/')[-1][:-4]}_ldr_linear.png", output_linear)
+    cv2.imwrite(f"{args.output_folder}/{args.source.split('/')[-1][:-4]}_ldr_gamma.png", output_gamma)
 
     print("Done.")
