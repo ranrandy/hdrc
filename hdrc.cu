@@ -12,8 +12,7 @@ torch::Tensor hdrcCUDA(
     torch::Tensor out_log_lum = torch::full({H, W}, 0.0, torch::kFloat32);
     
     // Convert color from RGB space to log of luminance, because HDR
-    torch::Tensor luminanceCoeffs = torch::tensor({0.2126729, 0.7151522, 0.0721750},
-                                                  torch::kFloat32).view({3, 1, 1});
+    torch::Tensor luminanceCoeffs = torch::tensor({0.2126729, 0.7151522, 0.0721750}, torch::kFloat32).view({3, 1, 1});
     torch::Tensor hdr_lum = torch::sum(hdr_rad_map_rgb * luminanceCoeffs, 0);
     torch::Tensor hdr_log_lum = torch::log(hdr_lum);
 
