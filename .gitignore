@@ -1,3 +1,5 @@
 figures/*
 .vscode
 v-dark/*
+*egg-info
+build/*
