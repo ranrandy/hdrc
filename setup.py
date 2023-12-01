@@ -15,6 +15,7 @@ setup(
             sources=[
             "utils/compressor.cu",
             "utils/utils.cu",
+            "poisson_solver/solver.cu",
             "hdrc.cu",
             "ext.cpp"],
             extra_compile_args={"nvcc": [], "cxx": cxx_compiler_flags})

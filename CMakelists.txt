@@ -17,6 +17,8 @@ add_library(HDRC
     utils/compressor.cu
     utils/utils.h
     utils/utils.cu
+    poisson_solver/solver.h
+    poisson_solver/solver.cu
 )
 
 set_target_properties(HDRC PROPERTIES CUDA_ARCHITECTURES "70;75;86")
