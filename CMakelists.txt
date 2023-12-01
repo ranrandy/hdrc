@@ -15,6 +15,8 @@ add_library(HDRC
     hdrc.cu
     utils/compressor.h
     utils/compressor.cu
+    utils/utils.h
+    utils/utils.cu
 )
 
 set_target_properties(HDRC PROPERTIES CUDA_ARCHITECTURES "70;75;86")

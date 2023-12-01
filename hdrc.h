@@ -1,6 +1,8 @@
 #pragma once
+#include <algorithm>
 #include <torch/extension.h>
 #include "utils/compressor.h"
+#include "utils/utils.h"
 
 /*
 hdr_rad_map:
