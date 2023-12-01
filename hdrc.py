@@ -22,7 +22,7 @@ def build_gaussian_pyramid(img):
     '''
     img_pyramid = [img]
     while (img_pyramid[-1].shape[0] / 2 > 32 and img_pyramid[-1].shape[1] / 2 > 32):
-        img_blurred = filters.gaussian(img_pyramid[-1])
+        img_blurred = filters.gaussian(img_pyramid[-1], sigma=1, truncate=2.0)
         img_pyramid.append(img_blurred[::2, ::2])
     return img_pyramid
 
