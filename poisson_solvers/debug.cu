@@ -1,7 +1,7 @@
 #include <iostream>
 #include <string>
 
-#include "solver.h"
+#include "solvers.h"
 #include "debug_function2D.h"
 
 int main(int argc, char* argv[]) {
@@ -31,7 +31,8 @@ int main(int argc, char* argv[]) {
     jacobiSolver(H, W, d_divG, iterations, tolerance, checkFrequency, d_I_log);
     cudaDeviceSynchronize();
 
-    float *h_I_log = new float[H*W];
+    float *h_I_log;
+    cudaMallocHost(&h_I_log, H * W * sizeof(float));
     cudaMemcpy(h_I_log, d_I_log, H * W * sizeof(float), cudaMemcpyDeviceToHost);
 
     float error = 0.0;

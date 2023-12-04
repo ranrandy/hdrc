@@ -14,3 +14,4 @@ Fattal, R., Lischinski, D., & Werman, M. (2023). _Gradient domain high dynamic r
 
 ### Problems
 1. The poisson solver, if using the residual to stop iterating, can only deal with images with fewer than 2^30 pixels for now, and the implementation for calculating residual/error between previous and the current results may be efficient.
+2. The poisson solvers may have some repeated parts. Will improve in the future.

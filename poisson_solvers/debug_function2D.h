@@ -4,7 +4,6 @@
 #include <iomanip>
 #include <iostream>
 
-#include <omp.h>
 #include <stdio.h>
 
 class Function2D {

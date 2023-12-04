@@ -8,7 +8,7 @@
 
 /*
     Jacobi iterative method:
-        x_i^{k+1} = \frac{1}{-4} (divG_i - x_{i-1}^k - x_{i-W}^k - x_{i+1}^k - x_{i+W}^k).
+        x_i^{k+1} = \frac{1}{4} (x_{i-1}^k + x_{i-W}^k + x_{i+1}^k + x_{i+W}^k - divG_i).
 */
 void jacobiSolver(
     const int H, const int W, 
@@ -19,7 +19,7 @@ void jacobiSolver(
 
 /*
     Gauss-Seidel iterative method:
-        x_i^{k+1} = \frac{1}{-4} (divG_i - x_{i-1}^{k+1} - x_{i-W}^{k+1} - x_{i+1}^k - x_{i+W}^k).
+        x_i^{k+1} = \frac{1}{4} (x_{i-1}^{k+1} + x_{i-W}^{k+1} + x_{i+1}^k + x_{i+W}^k - divG_i).
 */
 void gaussSeidelSolver(
     const int H, const int W, 
@@ -30,8 +30,8 @@ void gaussSeidelSolver(
 
 /*
     Gauss-Seidel iterative method with Red-Black Reordering:
-        x_{2i}^{k+1} = \frac{1}{-4} (divG_i - x_{i-1}^k - x_{i-W}^k - x_{i+1}^k - x_{i+W}^k),
-        x_{2i+1}^{k+1} = \frac{1}{-4} (divG_i - x_{i-1}^{k+1} - x_{i-W}^{k+1} - x_{i+1}^{k+1} - x_{i+W}^{k+1}).
+        x_{2i}^{k+1} = \frac{1}{4} (x_{i-1}^k + x_{i-W}^k + x_{i+1}^k + x_{i+W}^k - divG_i),
+        x_{2i+1}^{k+1} = \frac{1}{4} (x_{i-1}^{k+1} + x_{i-W}^{k+1} + x_{i+1}^{k+1} + x_{i+W}^{k+1} - divG_i).
 */
 void gaussSeidelRedBlackSolver(
     const int H, const int W, 
@@ -42,14 +42,14 @@ void gaussSeidelRedBlackSolver(
 
 /*
     Gauss-Seidel iterative method with Red-Black Reordering and Overrelaxation (SOR):
-        x_{2i}^{k+1} = \frac{1}{-4} (divG_i - w_{opt} * x_{i-1}^k - w_{opt} * x_{i-W}^k - x_{i+1}^k - x_{i+W}^k),
-        x_{2i+1}^{k+1} = \frac{1}{-4} (divG_i - w_{opt} * x_{i-1}^{k+1} - w_{opt} * x_{i-W}^{k+1} - x_{i+1}^{k+1} - x_{i+W}^{k+1}),
+        x_{2i}^{k+1} = \frac{1}{4} (w_{opt} * x_{i-1}^k + w_{opt} * x_{i-W}^k + x_{i+1}^k + x_{i+W}^k - divG_i),
+        x_{2i+1}^{k+1} = \frac{1}{4} (w_{opt} * x_{i-1}^{k+1} + w_{opt} * x_{i-W}^{k+1} + x_{i+1}^{k+1} + x_{i+W}^{k+1} - divG_i),
         w_{opt} = \frac{2}{1 + \sqrt{1 - \cos{\pi/\frac{H+W}{2}}^2}}.
 */
 void gaussSeidelRedBlackSORSolver(
     const int H, const int W, 
     const float* d_divG,
-    const int iterations, const float tolerance, const int checkFrequency,
+    const int iterations, const float tolerance, const int checkFrequency, const float omega,
     float* d_I_log
 );
 
