@@ -1,6 +1,8 @@
 #ifndef POISSON_SOLVER_H_INCLUDED
 #define POISSON_SOLVER_H_INCLUDED
 
+#include <iostream>
+#include <algorithm>
 #include <cuda_runtime.h>
 #include <device_launch_parameters.h>
 

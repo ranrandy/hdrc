@@ -6,7 +6,7 @@
 /*
     Compute the residual/error between the previous iteration result and the current iteration result.
 */
-__global__ void errorKernel(const float* current, const float* previous, float* partialSums, int N) {
+__global__ void errorKernel(const float* current, const float* previous, float* partialSums, const int N) {
     int tid = threadIdx.x + blockIdx.x * blockDim.x;
 
     __shared__ float s_sum[1024 / WARP_SIZE];
@@ -42,7 +42,7 @@ __global__ void errorKernel(const float* current, const float* previous, float* 
     }
 }
 
-__global__ void errorReductionKernel(float* partialSums, float* result, int numSums) {
+__global__ void errorReductionKernel(const float* partialSums, float* result, const int numSums) {
     int tid = threadIdx.x + blockIdx.x * blockDim.x;
 
     __shared__ float s_sum[1024 / WARP_SIZE];
@@ -80,9 +80,9 @@ __global__ void errorReductionKernel(float* partialSums, float* result, int numS
 
 
 /*
-    Jacobi method kernel.
+    Jacobi method kernels.
 */
-__global__ void jacobiKernel(float *current, float *result, const float* b, int W, int H) {
+__global__ void jacobiKernel(const float *current, float *result, const float* b, const int W, const int H) {
     int i = blockIdx.x * blockDim.x + threadIdx.x;
     int j = blockIdx.y * blockDim.y + threadIdx.y;
 
@@ -109,17 +109,18 @@ void jacobiSolver(
     dim3 nthreadsJacobi(16, 16, 1);
     dim3 nblocksJacobi((W + nthreadsJacobi.x - 1) / nthreadsJacobi.x, (H + nthreadsJacobi.y - 1) / nthreadsJacobi.y, 1);
 
-    float* d_current;
+    float *d_current;
     cudaMalloc(&d_current, N * sizeof(float));
     cudaMemset(d_current, 0.0, N * sizeof(float));
 
+    int i = 0;
     if (tolerance < 0.0)
     { 
-        for (int i = 0; i < iterations; ++i) 
+        for (; i < iterations; ) 
         {
             jacobiKernel<<<nblocksJacobi, nthreadsJacobi>>>(d_current, d_I_log, d_divG, W, H);
             cudaDeviceSynchronize();
-            std::swap(d_current, d_I_log);
+            std::swap(d_current, d_I_log); ++i;
         }
     } 
     else 
@@ -139,11 +140,11 @@ void jacobiSolver(
         float *error_d;
         cudaMalloc(&error_d, sizeof(float));
 
-        for (int i = 0; i < iterations; ++i) 
+        for (; i < iterations; ) 
         {
             jacobiKernel<<<nblocksJacobi, nthreadsJacobi>>>(d_current, d_I_log, d_divG, W, H);
             cudaDeviceSynchronize();
-            std::swap(d_current, d_I_log);
+            std::swap(d_current, d_I_log); ++i;
 
             if (i % checkFrequency == 0) // This error calculation may be inefficient. Possibly be improved in the future.
             {   
@@ -159,6 +160,8 @@ void jacobiSolver(
                 }
                 cudaDeviceSynchronize();
                 cudaMemcpy(&error_h, error_d, sizeof(float), cudaMemcpyDeviceToHost);
+                
+                error_h /= N;
 
                 if (error_h < tolerance) break;
             }
@@ -168,7 +171,7 @@ void jacobiSolver(
         cudaFree(error_d);
     }
 
-    std::swap(d_current, d_I_log);
+    if (i % 2 == 1) std::swap(d_current, d_I_log);
     cudaFree(d_current);
 }
 

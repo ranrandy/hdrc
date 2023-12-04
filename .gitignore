@@ -3,3 +3,6 @@ figures/*
 v-dark/*
 *egg-info
 build/*
+*.exe
+*.exp
+*.lib
