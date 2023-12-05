@@ -13,11 +13,11 @@ Function2D::Function2D(int W, int H) {
 
     // Store the real laplacian values
     _real_f_laplacian = new float [_H * _W];
-    for (int j = 1; j < _H-1; ++j) for (int i = 1; i < _W-1; ++i) _real_f_laplacian[j * _W + i] = getRealLaplacian(j, i);
+    for (int j = 0; j < _H; ++j) for (int i = 0; i < _W; ++i) _real_f_laplacian[j * _W + i] = getRealLaplacian(j, i);
 
     // Initialize the estimated f laplacian array
     _estimated_f_laplacian = new float [_H * _W];
-    for (int j = 1; j < _H-1; ++j) for (int i = 1; i < _W-1; ++i) _estimated_f_laplacian[j * _W + i] = getEstimatedLaplacian(j, i);
+    for (int j = 0; j < _H; ++j) for (int i = 0; i < _W; ++i) _estimated_f_laplacian[j * _W + i] = getEstimatedLaplacian(j, i);
 }
 
 Function2D::~Function2D() {
@@ -35,5 +35,13 @@ float Function2D::getRealLaplacian(int j, int i) {
 }
 
 float Function2D::getEstimatedLaplacian(int j, int i) {
-    return _f[j * _W + i-1] + _f[j * _W + i+1] + _f[(j-1) * _W + i] + _f[(j+1) * _W + i] - 4*_f[j * _W + i];
+    int idx = j * _W + i;
+
+    // Simulate Neumann Boundary condition
+    float up = (j > 0) ? _f[idx - _W] : _f[idx];
+    float left = (i > 0) ? _f[idx - 1] : _f[idx];
+    float right = (i < _W - 1) ? _f[idx + 1] : _f[idx];
+    float bottom = (j < _H - 1) ? _f[idx + _W] : _f[idx];
+
+    return up + left + right + bottom - 4*_f[idx];
 }

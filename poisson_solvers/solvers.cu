@@ -1,7 +1,5 @@
 #include "solvers.h"
 
-#define FULL_MASK 0xffffffff
-#define WARP_SIZE 32
 
 /*
     Kernels for computing the residual/error between the previous and current iteration results.
@@ -80,9 +78,9 @@ __global__ void errorReductionKernel(const float* partialSums, float* result, co
 
 
 /*
-    Kernel for Jacobi method.
+    Kernel for the Jacobi method.
 */
-__global__ void jacobiKernel(const float *current, float *result, const float* b, const int W, const int H) {
+__global__ void jacobiKernel(const int H, const int W, const float* b, const float *current, float *result) {
     int i = blockIdx.x * blockDim.x + threadIdx.x;
     int j = blockIdx.y * blockDim.y + threadIdx.y;
 
@@ -91,177 +89,23 @@ __global__ void jacobiKernel(const float *current, float *result, const float* b
     int idx = j * W + i;
 
     float up = (j > 0) ? current[idx - W] : current[idx];
-    float bottom = (j < H - 1) ? current[idx + W] : current[idx];
-    float right = (i < W - 1) ? current[idx + 1] : current[idx];
     float left = (i > 0) ? current[idx - 1] : current[idx];
+    float right = (i < W - 1) ? current[idx + 1] : current[idx];
+    float bottom = (j < H - 1) ? current[idx + W] : current[idx];
 
-    result[idx] = 0.25 * (up + bottom + right + left - b[idx]);
+    result[idx] = 0.25f * (up + left + right + bottom - b[idx]);
 }
 
-void jacobiSolver(
-    const int H, const int W, 
-    const float* d_divG, 
-    const int iterations, const float tolerance, const int checkFrequency,
-    float* d_I_log)
+void jacobi(const int H, const int W, const float* d_divG, const float* d_current, const dim3 nblocks, const dim3 nthreads, float* d_I_log)
 {
-    const int N = H * W;
-
-    dim3 nthreadsJacobi(16, 16, 1);
-    dim3 nblocksJacobi((W + nthreadsJacobi.x - 1) / nthreadsJacobi.x, (H + nthreadsJacobi.y - 1) / nthreadsJacobi.y, 1);
-
-    float *d_current;
-    cudaMalloc(&d_current, N * sizeof(float));
-    cudaMemset(d_current, 0.0, N * sizeof(float));
-
-    int i = 0;
-    if (tolerance < 0.0)
-    { 
-        for (; i < iterations; ) 
-        {
-            jacobiKernel<<<nblocksJacobi, nthreadsJacobi>>>(d_current, d_I_log, d_divG, W, H);
-            cudaDeviceSynchronize();
-            std::swap(d_current, d_I_log); ++i;
-        }
-    } 
-    else 
-    {   
-        int nthreads = 1024;
-        int nblocksError = (N + nthreads - 1) / nthreads;
-        float *partialErrorSums;
-        cudaMalloc(&partialErrorSums, nblocksError * sizeof(float));
-        cudaMemset(partialErrorSums, 0.0, nblocksError * sizeof(float));
-
-        int nblocksError2 = (nblocksError + nthreads - 1) / nthreads;
-        float* partialErrorSums2;
-        cudaMalloc(&partialErrorSums2, nblocksError2 * sizeof(float)); // This should be enough for 2^30 elements/pixels
-        cudaMemset(partialErrorSums2, 0.0, nblocksError2 * sizeof(float));
-
-        float error_h;
-        float *error_d;
-        cudaMalloc(&error_d, sizeof(float));
-
-        for (; i < iterations; ) 
-        {
-            jacobiKernel<<<nblocksJacobi, nthreadsJacobi>>>(d_current, d_I_log, d_divG, W, H);
-            cudaDeviceSynchronize();
-            std::swap(d_current, d_I_log); ++i;
-
-            if (i % checkFrequency == 0) // This error calculation may be inefficient. Possibly be improved in the future.
-            {   
-                errorKernel<<<nblocksError, nthreads>>>(d_current, d_I_log, partialErrorSums, N);
-                if (nblocksError > nthreads)
-                {
-                    errorReductionKernel<<<nblocksError2, nthreads>>>(partialErrorSums, partialErrorSums2, nblocksError);
-                    errorReductionKernel<<<1, nthreads>>>(partialErrorSums2, error_d, nblocksError2);
-                }
-                else
-                {
-                    errorReductionKernel<<<1, nthreads>>>(partialErrorSums, error_d, nblocksError);
-                }
-                cudaDeviceSynchronize();
-                cudaMemcpy(&error_h, error_d, sizeof(float), cudaMemcpyDeviceToHost);
-                
-                error_h /= N;
-
-                if (error_h < tolerance) break;
-            }
-        }
-        cudaFree(partialErrorSums);
-        cudaFree(partialErrorSums2);
-        cudaFree(error_d);
-    }
-
-    if (i % 2 == 1) std::swap(d_current, d_I_log);
-    cudaFree(d_current);
+    jacobiKernel<<<nblocks, nthreads>>>(H, W, d_divG, d_current, d_I_log);
 }
 
 
 /*
-    No kernel for the Gauss-Seidel method because it's sequential.
+    Kernels for the Red-Black Gauss-Seildel method.
 */
-void gaussSeidelSolver(
-    const int H, const int W, 
-    const float* d_divG,
-    const int iterations, const float tolerance, const int checkFrequency,
-    float* d_I_log)
-{
-    const int N = H * W;
-
-    float *d_current;
-    cudaMalloc(&d_current, N * sizeof(float));
-    cudaMemset(d_current, 0.0, N * sizeof(float));
-
-    int i = 0;
-    if (tolerance < 0.0)
-    {
-        for (; i < iterations; )
-        {
-            for (int idx = 0; idx < H * W; ++idx)
-            {
-                d_I_log[idx] = 0.25 * (d_I_log[idx - 1] + d_I_log[idx - W] + d_current[idx + 1] + d_current[idx + W] - d_divG[idx]);
-            }
-            std::swap(d_current, d_I_log); ++i;
-        }
-    }
-    else
-    {
-        int nthreads = 1024;
-        int nblocksError = (N + nthreads - 1) / nthreads;
-        float *partialErrorSums;
-        cudaMalloc(&partialErrorSums, nblocksError * sizeof(float));
-        cudaMemset(partialErrorSums, 0.0, nblocksError * sizeof(float));
-
-        int nblocksError2 = (nblocksError + nthreads - 1) / nthreads;
-        float* partialErrorSums2;
-        cudaMalloc(&partialErrorSums2, nblocksError2 * sizeof(float)); // This should be enough for 2^30 elements/pixels
-        cudaMemset(partialErrorSums2, 0.0, nblocksError2 * sizeof(float));
-
-        float error_h;
-        float *error_d;
-        cudaMalloc(&error_d, sizeof(float));
-
-        for (; i < iterations; )
-        {
-            for (int idx = 0; idx < H * W; ++idx)
-            {
-                d_I_log[idx] = 0.25 * (d_I_log[idx - 1] + d_I_log[idx - W] + d_current[idx + 1] + d_current[idx + W] - d_divG[idx]);
-            }
-            std::swap(d_current, d_I_log); ++i;
-
-            if (i % checkFrequency == 0)
-            {
-                errorKernel<<<nblocksError, nthreads>>>(d_current, d_I_log, partialErrorSums, N);
-                if (nblocksError > nthreads)
-                {
-                    errorReductionKernel<<<nblocksError2, nthreads>>>(partialErrorSums, partialErrorSums2, nblocksError);
-                    errorReductionKernel<<<1, nthreads>>>(partialErrorSums2, error_d, nblocksError2);
-                }
-                else
-                {
-                    errorReductionKernel<<<1, nthreads>>>(partialErrorSums, error_d, nblocksError);
-                }
-                cudaDeviceSynchronize();
-                cudaMemcpy(&error_h, error_d, sizeof(float), cudaMemcpyDeviceToHost);
-                
-                error_h /= N;
-
-                if (error_h < tolerance) break;
-            }
-        }
-        cudaFree(partialErrorSums);
-        cudaFree(partialErrorSums2);
-        cudaFree(error_d);
-    }
-    
-    if (i % 2 == 1) std::swap(d_current, d_I_log);
-    cudaFree(d_current);
-}
-
-
-/*
-    Kernel for Red-Black Gauss-Seildel method.
-*/
-__global__ void redGaussSeidelKernel(const float *current, float *result, const float* b, const int W, const int H) {
+__global__ void redGaussSeidelKernel(const int H, const int W, const float* b, const float *current, float *result) {
     int i = blockIdx.x * blockDim.x + threadIdx.x;
     int j = blockIdx.y * blockDim.y + threadIdx.y;
 
@@ -275,11 +119,11 @@ __global__ void redGaussSeidelKernel(const float *current, float *result, const 
         float left = (i > 0) ? current[idx - 1] : current[idx];
         float right = (i < W - 1) ? current[idx + 1] : current[idx];
         float bottom = (j < H - 1) ? current[idx + W] : current[idx];
-        result[idx] = 0.25 * (left + up + bottom + right - b[idx]);
+        result[idx] = 0.25f * (up + left + right + bottom - b[idx]);
     }
 }
 
-__global__ void blackGaussSeidelKernel(float *result, const float* b, const int W, const int H) {
+__global__ void blackGaussSeidelKernel(const int H, const int W, const float* b, float *result) {
     int i = blockIdx.x * blockDim.x + threadIdx.x;
     int j = blockIdx.y * blockDim.y + threadIdx.y;
 
@@ -293,94 +137,21 @@ __global__ void blackGaussSeidelKernel(float *result, const float* b, const int 
         float left = (i > 0) ? result[idx - 1] : result[idx];
         float right = (i < W - 1) ? result[idx + 1] : result[idx];
         float bottom = (j < H - 1) ? result[idx + W] : result[idx];
-        result[idx] = 0.25 * (left + up + bottom + right - b[idx]);
+        result[idx] = 0.25f * (up + left + right + bottom - b[idx]);
     }
 }
 
-void gaussSeidelRedBlackSolver(
-    const int H, const int W, 
-    const float* d_divG,
-    const int iterations, const float tolerance, const int checkFrequency,
-    float* d_I_log)
+void gaussSeidelRedBlack(const int H, const int W, const float* d_divG, const float* d_current, const dim3 nblocks, const dim3 nthreads, float* d_I_log)
 {
-    const int N = H * W;
-
-    dim3 nthreadsJacobi(16, 16, 1);
-    dim3 nblocksJacobi((W + nthreadsJacobi.x - 1) / nthreadsJacobi.x, (H + nthreadsJacobi.y - 1) / nthreadsJacobi.y, 1);
-
-    float *d_current;
-    cudaMalloc(&d_current, N * sizeof(float));
-    cudaMemset(d_current, 0.0, N * sizeof(float));
-
-    int i = 0;
-    if (tolerance < 0.0)
-    { 
-        for (; i < iterations; ) 
-        {
-            redGaussSeidelKernel<<<nblocksJacobi, nthreadsJacobi>>>(d_current, d_I_log, d_divG, W, H);
-            blackGaussSeidelKernel<<<nblocksJacobi, nthreadsJacobi>>>(d_I_log, d_divG, W, H);
-            cudaDeviceSynchronize();
-            std::swap(d_current, d_I_log); ++i;
-        }
-    } 
-    else 
-    {   
-        int nthreads = 1024;
-        int nblocksError = (N + nthreads - 1) / nthreads;
-        float *partialErrorSums;
-        cudaMalloc(&partialErrorSums, nblocksError * sizeof(float));
-        cudaMemset(partialErrorSums, 0.0, nblocksError * sizeof(float));
-
-        int nblocksError2 = (nblocksError + nthreads - 1) / nthreads;
-        float* partialErrorSums2;
-        cudaMalloc(&partialErrorSums2, nblocksError2 * sizeof(float)); // This should be enough for 2^30 elements/pixels
-        cudaMemset(partialErrorSums2, 0.0, nblocksError2 * sizeof(float));
-
-        float error_h;
-        float *error_d;
-        cudaMalloc(&error_d, sizeof(float));
-
-        for (; i < iterations; ) 
-        {
-            redGaussSeidelKernel<<<nblocksJacobi, nthreadsJacobi>>>(d_current, d_I_log, d_divG, W, H);
-            blackGaussSeidelKernel<<<nblocksJacobi, nthreadsJacobi>>>(d_I_log, d_divG, W, H);
-            cudaDeviceSynchronize();
-            std::swap(d_current, d_I_log); ++i;
-
-            if (i % checkFrequency == 0) // This error calculation may be inefficient. Possibly be improved in the future.
-            {   
-                errorKernel<<<nblocksError, nthreads>>>(d_current, d_I_log, partialErrorSums, N);
-                if (nblocksError > nthreads)
-                {
-                    errorReductionKernel<<<nblocksError2, nthreads>>>(partialErrorSums, partialErrorSums2, nblocksError);
-                    errorReductionKernel<<<1, nthreads>>>(partialErrorSums2, error_d, nblocksError2);
-                }
-                else
-                {
-                    errorReductionKernel<<<1, nthreads>>>(partialErrorSums, error_d, nblocksError);
-                }
-                cudaDeviceSynchronize();
-                cudaMemcpy(&error_h, error_d, sizeof(float), cudaMemcpyDeviceToHost);
-                
-                error_h /= N;
-
-                if (error_h < tolerance) break;
-            }
-        }
-        cudaFree(partialErrorSums);
-        cudaFree(partialErrorSums2);
-        cudaFree(error_d);
-    }
-
-    if (i % 2 == 1) std::swap(d_current, d_I_log);
-    cudaFree(d_current);
+    redGaussSeidelKernel<<<nblocks, nthreads>>>(H, W, d_divG, d_current, d_I_log);
+    blackGaussSeidelKernel<<<nblocks, nthreads>>>(H, W, d_divG, d_I_log);
 }
 
 
 /*
-    Kernel for Red-Black Gauss-Seildel method with overrelaxation.
+    Kernels for the Red-Black Gauss-Seildel method with overrelaxation.
 */
-__global__ void redGaussSeidelSORKernel(const float *current, float *result, const float* b, const int W, const int H, const float omega) {
+__global__ void redGaussSeidelSORKernel(const int H, const int W, const float* b, const float *current, float *result, const float w_opt) {
     int i = blockIdx.x * blockDim.x + threadIdx.x;
     int j = blockIdx.y * blockDim.y + threadIdx.y;
 
@@ -394,11 +165,13 @@ __global__ void redGaussSeidelSORKernel(const float *current, float *result, con
         float left = (i > 0) ? current[idx - 1] : current[idx];
         float right = (i < W - 1) ? current[idx + 1] : current[idx];
         float bottom = (j < H - 1) ? current[idx + W] : current[idx];
-        result[idx] = 0.25 * (omega * (left + up) + bottom + right - b[idx]);
+        
+        float GS_update = 0.25f * (up + left + right + bottom - b[idx]);
+        result[idx] = (1 - w_opt) * current[idx] + w_opt * GS_update;
     }
 }
 
-__global__ void blackGaussSeidelSORKernel(float *result, const float* b, const int W, const int H, const float omega) {
+__global__ void blackGaussSeidelSORKernel(const int H, const int W, const float* b, float *result, const float w_opt) {
     int i = blockIdx.x * blockDim.x + threadIdx.x;
     int j = blockIdx.y * blockDim.y + threadIdx.y;
 
@@ -412,45 +185,69 @@ __global__ void blackGaussSeidelSORKernel(float *result, const float* b, const i
         float left = (i > 0) ? result[idx - 1] : result[idx];
         float right = (i < W - 1) ? result[idx + 1] : result[idx];
         float bottom = (j < H - 1) ? result[idx + W] : result[idx];
-        result[idx] = 0.25 * (omega * (left + up) + bottom + right - b[idx]);
+
+        float GS_update = 0.25f * (up + left + right + bottom - b[idx]);
+        result[idx] = (1 - w_opt) * result[idx] + w_opt * GS_update;
     }
 }
 
-void gaussSeidelRedBlackSORSolver(
+void gaussSeidelRedBlackSOR(const int H, const int W, const float* d_divG, const float* d_current, const dim3 nblocks, const dim3 nthreads, float* d_I_log)
+{
+    float w_opt = 2.0f / (1.0f + sqrtf(1.0f - powf(cosf(M_PI / max(H, W)), 2.0f)));
+    redGaussSeidelSORKernel<<<nblocks, nthreads>>>(H, W, d_divG, d_current, d_I_log, w_opt);
+    blackGaussSeidelSORKernel<<<nblocks, nthreads>>>(H, W, d_divG, d_I_log, w_opt);
+}
+
+
+int solver(
     const int H, const int W, 
-    const float* d_divG,
-    const int iterations, const float tolerance, const int checkFrequency, const float omega,
+    const float* d_divG, const int method,
+    const int iterations, const float tolerance, const int checkFrequency,
     float* d_I_log)
 {
     const int N = H * W;
 
-    dim3 nthreadsJacobi(16, 16, 1);
-    dim3 nblocksJacobi((W + nthreadsJacobi.x - 1) / nthreadsJacobi.x, (H + nthreadsJacobi.y - 1) / nthreadsJacobi.y, 1);
+    dim3 nthreadsMethod(16, 16, 1);
+    dim3 nblocksMethod((W + nthreadsMethod.x - 1) / nthreadsMethod.x, (H + nthreadsMethod.y - 1) / nthreadsMethod.y, 1);
 
     float *d_current;
     cudaMalloc(&d_current, N * sizeof(float));
     cudaMemset(d_current, 0.0, N * sizeof(float));
+    cudaMemset(d_I_log, 0.0, N * sizeof(float));
+
+    KernelFunction methodKernel;
+    switch (method) {
+        case 0:
+            methodKernel = jacobi;
+            break;
+        case 1:
+            methodKernel = gaussSeidelRedBlack;
+            break;
+        case 2:
+            methodKernel = gaussSeidelRedBlackSOR;
+            break;
+        default:
+            return -1;
+    }
 
     int i = 0;
     if (tolerance < 0.0)
     { 
         for (; i < iterations; ) 
         {
-            redGaussSeidelSORKernel<<<nblocksJacobi, nthreadsJacobi>>>(d_current, d_I_log, d_divG, W, H, omega);
-            blackGaussSeidelSORKernel<<<nblocksJacobi, nthreadsJacobi>>>(d_I_log, d_divG, W, H, omega);
+            methodKernel(H, W, d_divG, d_current, nblocksMethod, nthreadsMethod, d_I_log);
             cudaDeviceSynchronize();
             std::swap(d_current, d_I_log); ++i;
         }
     } 
     else 
     {   
-        int nthreads = 1024;
-        int nblocksError = (N + nthreads - 1) / nthreads;
+        int nblocksError = (N + MAX_THREADS - 1) / MAX_THREADS;
         float *partialErrorSums;
         cudaMalloc(&partialErrorSums, nblocksError * sizeof(float));
         cudaMemset(partialErrorSums, 0.0, nblocksError * sizeof(float));
 
-        int nblocksError2 = (nblocksError + nthreads - 1) / nthreads;
+        int nblocksError2 = (nblocksError + MAX_THREADS - 1) / MAX_THREADS;
         float* partialErrorSums2;
         cudaMalloc(&partialErrorSums2, nblocksError2 * sizeof(float)); // This should be enough for 2^30 elements/pixels
         cudaMemset(partialErrorSums2, 0.0, nblocksError2 * sizeof(float));
@@ -461,22 +258,21 @@ void gaussSeidelRedBlackSORSolver(
 
         for (; i < iterations; ) 
         {
-            redGaussSeidelSORKernel<<<nblocksJacobi, nthreadsJacobi>>>(d_current, d_I_log, d_divG, W, H, omega);
-            blackGaussSeidelSORKernel<<<nblocksJacobi, nthreadsJacobi>>>(d_I_log, d_divG, W, H, omega);
+            methodKernel(H, W, d_divG, d_current, nblocksMethod, nthreadsMethod, d_I_log);
             cudaDeviceSynchronize();
             std::swap(d_current, d_I_log); ++i;
 
             if (i % checkFrequency == 0) // This error calculation may be inefficient. Possibly be improved in the future.
             {   
-                errorKernel<<<nblocksError, nthreads>>>(d_current, d_I_log, partialErrorSums, N);
-                if (nblocksError > nthreads)
+                errorKernel<<<nblocksError, MAX_THREADS>>>(d_current, d_I_log, partialErrorSums, N);
+                if (nblocksError > MAX_THREADS)
                 {
-                    errorReductionKernel<<<nblocksError2, nthreads>>>(partialErrorSums, partialErrorSums2, nblocksError);
-                    errorReductionKernel<<<1, nthreads>>>(partialErrorSums2, error_d, nblocksError2);
+                    errorReductionKernel<<<nblocksError2, MAX_THREADS>>>(partialErrorSums, partialErrorSums2, nblocksError);
+                    errorReductionKernel<<<1, MAX_THREADS>>>(partialErrorSums2, error_d, nblocksError2);
                 }
                 else
                 {
-                    errorReductionKernel<<<1, nthreads>>>(partialErrorSums, error_d, nblocksError);
+                    errorReductionKernel<<<1, MAX_THREADS>>>(partialErrorSums, error_d, nblocksError);
                 }
                 cudaDeviceSynchronize();
                 cudaMemcpy(&error_h, error_d, sizeof(float), cudaMemcpyDeviceToHost);
@@ -493,6 +289,7 @@ void gaussSeidelRedBlackSORSolver(
 
     if (i % 2 == 1) std::swap(d_current, d_I_log);
     cudaFree(d_current);
+    return i;
 }
 
 
