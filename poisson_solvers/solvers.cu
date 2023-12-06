@@ -115,6 +115,31 @@ void gaussSeidelRedBlack(const int H, const int W, const float* d_divG, const di
 /*
     Kernels for the Red-Black Gauss-Seildel method with pre-reordered grids.
 */
+__global__ void fillInRedBlackBGaussSeidel2Kernel(const int H, const int W, const float* b, float* red_black_b, const int offset) {
+    int i = blockIdx.x * blockDim.x + threadIdx.x;
+    int j = blockIdx.y * blockDim.y + threadIdx.y;
+
+    if (i >= W || j >= H) return;
+
+    int idx = j * W + i;
+    int squeezed_j;
+
+    if ((i+j) % 2 == 0) // red
+    {
+        if (i % 2 == 1) squeezed_j = (j - 1) / 2;
+        else squeezed_j = j / 2;
+        int squeezed_idx = squeezed_j * W + i; 
+        red_black_b[squeezed_idx] = b[idx];
+    }
+    else // black
+    {
+        if (i % 2 == 1) squeezed_j = j / 2;
+        else squeezed_j = (j - 1) / 2; 
+        int squeezed_idx = squeezed_j * W + i; 
+        red_black_b[squeezed_idx + offset] = b[idx];
+    }
+}
+
 __global__ void redGaussSeidelKernel2(const int H, const int W, const float* b, const float *black, float *red) {
     int i = blockIdx.x * blockDim.x + threadIdx.x;
     int j = blockIdx.y * blockDim.y + threadIdx.y;
@@ -127,29 +152,27 @@ __global__ void redGaussSeidelKernel2(const int H, const int W, const float* b, 
     {
         int orig_j = j * 2 + 1;
         if (orig_j >= H) return;
-        int b_idx = orig_j * W + i;
 
         float up = black[idx];
         float left = black[idx - 1];
         float right = (i < W - 1) ? black[idx + 1] : red[idx];
-        float bottom = (j < H - 1) ? black[idx + W] : red[idx];
-        red[idx] = 0.25f * (up + left + right + bottom - b[b_idx]);
+        float bottom = (orig_j < H - 1) ? black[idx + W] : red[idx];
+        red[idx] = 0.25f * (up + left + right + bottom - b[idx]);
     }
     else
     {
         int orig_j = j * 2;
         if (orig_j >= H) return;
-        int b_idx = orig_j * W + i;
 
-        float up = (j > 0) ? black[idx - W] : red[idx];
+        float up = (orig_j > 0) ? black[idx - W] : red[idx];
         float left = (i > 0) ? black[idx - 1] : red[idx];
         float right = (i < W - 1) ? black[idx + 1] : red[idx];
-        float bottom = (j < H - 1) ? black[idx] : red[idx];
-        red[idx] = 0.25f * (up + left + right + bottom - b[b_idx]);
+        float bottom = (orig_j < H - 1) ? black[idx] : red[idx];
+        red[idx] = 0.25f * (up + left + right + bottom - b[idx]);
     }
 }
 
-__global__ void blackGaussSeidelKernel2(const int H, const int W, const float* b, const float *red, float *black) {
+__global__ void blackGaussSeidelKernel2(const int H, const int W, const float* b, const float *red, float *black, const int offset) {
     int i = blockIdx.x * blockDim.x + threadIdx.x;
     int j = blockIdx.y * blockDim.y + threadIdx.y;
 
@@ -161,25 +184,23 @@ __global__ void blackGaussSeidelKernel2(const int H, const int W, const float* b
     {
         int orig_j = j * 2;
         if (orig_j >= H) return;
-        int b_idx = orig_j * W + i;
 
         float up = (orig_j > 0) ? red[idx - W] : black[idx];
         float left = red[idx - 1];
         float right = (i < W - 1) ? red[idx + 1] : black[idx];
         float bottom = (orig_j < H - 1) ? red[idx] : black[idx];
-        black[idx] = 0.25f * (up + left + right + bottom - b[b_idx]);
+        black[idx] = 0.25f * (up + left + right + bottom - b[idx + offset]);
     }
     else
     {
         int orig_j = j * 2 + 1;
         if (orig_j >= H) return;
-        int b_idx = orig_j * W + i;
 
         float up = red[idx];
         float left = (i > 0) ? red[idx - 1] : black[idx];
         float right = (i < W - 1) ? red[idx + 1] : black[idx];
         float bottom = (orig_j < H - 1) ? red[idx + W] : black[idx];
-        black[idx] = 0.25f * (up + left + right + bottom - b[b_idx]);
+        black[idx] = 0.25f * (up + left + right + bottom - b[idx + offset]);
     }
 }
 
@@ -212,7 +233,7 @@ __global__ void fillInGaussSeidel2Kernel(const int H, const int W, const float* 
 void gaussSeidelRedBlack2(const int H, const int W, const float* d_divG, const dim3 nblocks, const dim3 nthreads, float* red, float* black)
 {
     redGaussSeidelKernel2<<<nblocks, nthreads>>>(H, W, d_divG, black, red);
-    blackGaussSeidelKernel2<<<nblocks, nthreads>>>(H, W, d_divG, red, black);
+    blackGaussSeidelKernel2<<<nblocks, nthreads>>>(H, W, d_divG, red, black, (H * W) / 2);
 }
 
 
@@ -273,7 +294,7 @@ int solver(
     const int iterations, const float tolerance, const int checkFrequency,
     float* d_I_log)
 {
-    const int N = H * W;
+    const int N = H * W, N2 = H * W / 2;
 
     methodFunction methodKernel;
     switch (method) {
@@ -341,44 +362,50 @@ int solver(
         dim3 nthreadsMethod(32, 16, 1);
         dim3 nblocksMethod((W + nthreadsMethod.x - 1) / nthreadsMethod.x, (int(H/2) + nthreadsMethod.y - 1) / nthreadsMethod.y, 1);
 
+        dim3 nthreadsFillIn(16, 16, 1);
+        dim3 nblocksFillIn((W + nthreadsFillIn.x - 1) / nthreadsFillIn.x, (H + nthreadsFillIn.y - 1) / nthreadsFillIn.y, 1);
+
         float *red, *black;
-        cudaMalloc(&red, int(N / 2) * sizeof(float));
-        cudaMemset(red, 0.0, int(N / 2) * sizeof(float));
-        cudaMalloc(&black, int(N / 2) * sizeof(float));
-        cudaMemset(black, 0.0, int(N / 2) * sizeof(float));
+        cudaMalloc(&red, N2 * sizeof(float));
+        cudaMemset(red, 0.0, N2 * sizeof(float));
+        cudaMalloc(&black, N2 * sizeof(float));
+        cudaMemset(black, 0.0, N2 * sizeof(float));
 
         float *prev_red;
-        cudaMalloc(&prev_red, int(N / 2) * sizeof(float));
+        cudaMalloc(&prev_red, N2 * sizeof(float));
+
+        float *red_black_divG;
+        cudaMalloc(&red_black_divG, N * sizeof(float));
+        fillInRedBlackBGaussSeidel2Kernel<<<nblocksFillIn, nthreadsFillIn>>>(H, W, d_divG, red_black_divG, N2);
 
         int i = 0;
         for (; i < iterations; ) 
         {
-            if ((i+1) % checkFrequency == 0) cudaMemcpy(prev_red, red, int(N / 2) * sizeof(float), cudaMemcpyDeviceToDevice);
+            if ((i+1) % checkFrequency == 0) cudaMemcpy(prev_red, red, N2 * sizeof(float), cudaMemcpyDeviceToDevice);
 
-            methodKernel(H, W, d_divG, nblocksMethod, nthreadsMethod, red, black);
+            methodKernel(H, W, red_black_divG, nblocksMethod, nthreadsMethod, red, black);
             cudaDeviceSynchronize();
             ++i;
 
             if (i % checkFrequency == 0)
             {   
                 cudaMemset(error_d, 0.0, sizeof(float));
-                atomicAddBlockErrorsKernel<<<nblocksError, MAX_THREADS>>>(red, prev_red, error_d, N / 2);
+                atomicAddBlockErrorsKernel<<<nblocksError, MAX_THREADS>>>(red, prev_red, error_d, N2);
                 cudaDeviceSynchronize();
                 cudaMemcpy(&error_h, error_d, sizeof(float), cudaMemcpyDeviceToHost);
-                error_h /= N / 2;
+                error_h /= N2;
 
                 if (error_h < tolerance) break;
             }
         }
 
-        dim3 nthreadsFillIn(16, 16, 1);
-        dim3 nblocksFillIn((W + nthreadsFillIn.x - 1) / nthreadsFillIn.x, (H + nthreadsFillIn.y - 1) / nthreadsFillIn.y, 1);
         fillInGaussSeidel2Kernel<<<nblocksFillIn, nthreadsFillIn>>>(H, W, red, black, d_I_log);
         cudaDeviceSynchronize();
 
         cudaFree(red);
         cudaFree(black);
         cudaFree(prev_red);
+        cudaFree(red_black_divG);
         cudaFree(error_d);
         return i;
     }
