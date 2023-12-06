@@ -4,7 +4,7 @@
 /*
     Kernels for computing the residual/error between the previous and current iteration results.
 */
-__global__ void errorKernel(const float* current, const float* previous, float* partialSums, const int N) {
+__global__ void blockErrorsKernel(const float* current, const float* previous, float* partialSums, const int N) {
     int tid = threadIdx.x + blockIdx.x * blockDim.x;
 
     __shared__ float s_sum[1024 / WARP_SIZE];
@@ -40,7 +40,7 @@ __global__ void errorKernel(const float* current, const float* previous, float* 
     }
 }
 
-__global__ void errorReductionKernel(const float* partialSums, float* result, const int numSums) {
+__global__ void blockErrorsReductionKernel(const float* partialSums, float* result, const int numSums) {
     int tid = threadIdx.x + blockIdx.x * blockDim.x;
 
     __shared__ float s_sum[1024 / WARP_SIZE];
@@ -76,6 +76,41 @@ __global__ void errorReductionKernel(const float* partialSums, float* result, co
     }
 }
 
+__global__ void atomicAddBlockErrorsKernel(const float* current, const float* previous, float* result, const int N) {
+    int tid = threadIdx.x + blockIdx.x * blockDim.x;
+
+    __shared__ float s_sum[1024 / WARP_SIZE];
+
+    int nwarps = blockDim.x / WARP_SIZE;
+    int my_warp = threadIdx.x / WARP_SIZE;
+
+    float sum = 0.0;
+    
+    if (tid < N)
+        sum = fabsf(current[tid] - previous[tid]);
+    __syncwarp();
+
+    // shift within warp
+    for (int offset = WARP_SIZE / 2; offset > 0; offset /= 2) 
+        sum += __shfl_down_sync(FULL_MASK, sum, offset);
+    
+    // sum over warps if needed
+    if (nwarps > 1) {
+        if (threadIdx.x % WARP_SIZE == 0)
+            s_sum[my_warp] = sum;
+        __syncthreads();
+
+        if (threadIdx.x == 0) {
+            for (int i = 1; i < nwarps; ++i)
+                sum += s_sum[i];
+        }
+    }
+
+    // final step - store results into the main device memory
+    if (threadIdx.x == 0) {
+        atomicAdd(result, sum);
+    }
+}
 
 /*
     Kernel for the Jacobi method.
@@ -215,7 +250,7 @@ int solver(
     cudaMemset(d_current, 0.0, N * sizeof(float));
     cudaMemset(d_I_log, 0.0, N * sizeof(float));
 
-    KernelFunction methodKernel;
+    methodFunction methodKernel;
     switch (method) {
         case 0:
             methodKernel = jacobi;
@@ -264,16 +299,17 @@ int solver(
 
             if (i % checkFrequency == 0) // This error calculation may be inefficient. Possibly be improved in the future.
             {   
-                errorKernel<<<nblocksError, MAX_THREADS>>>(d_current, d_I_log, partialErrorSums, N);
+                blockErrorsKernel<<<nblocksError, MAX_THREADS>>>(d_current, d_I_log, partialErrorSums, N);
                 if (nblocksError > MAX_THREADS)
                 {
-                    errorReductionKernel<<<nblocksError2, MAX_THREADS>>>(partialErrorSums, partialErrorSums2, nblocksError);
-                    errorReductionKernel<<<1, MAX_THREADS>>>(partialErrorSums2, error_d, nblocksError2);
+                    blockErrorsReductionKernel<<<nblocksError2, MAX_THREADS>>>(partialErrorSums, partialErrorSums2, nblocksError);
+                    blockErrorsReductionKernel<<<1, MAX_THREADS>>>(partialErrorSums2, error_d, nblocksError2);
                 }
                 else
                 {
-                    errorReductionKernel<<<1, MAX_THREADS>>>(partialErrorSums, error_d, nblocksError);
+                    blockErrorsReductionKernel<<<1, MAX_THREADS>>>(partialErrorSums, error_d, nblocksError);
                 }
+                // atomicAddBlockErrorsKernel<<<nblocksError, MAX_THREADS>>>(d_current, d_I_log, error_d, N);
                 cudaDeviceSynchronize();
                 cudaMemcpy(&error_h, error_d, sizeof(float), cudaMemcpyDeviceToHost);
                 
