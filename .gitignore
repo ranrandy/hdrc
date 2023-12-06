@@ -6,3 +6,5 @@ build/*
 *.exe
 *.exp
 *.lib
+*.out
+*.nsys-rep

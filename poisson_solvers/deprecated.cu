@@ -131,7 +131,7 @@ int solver(
 
     for (; i < iterations; ) 
     {
-        methodKernel(H, W, d_divG, d_current, nblocksMethod, nthreadsMethod, d_I_log);
+        methodKernel(H, W, d_divG, nblocksMethod, nthreadsMethod, d_current, d_I_log);
         cudaDeviceSynchronize();
         std::swap(d_current, d_I_log); ++i;
 
@@ -164,4 +164,30 @@ int solver(
     if (i % 2 == 1) std::swap(d_current, d_I_log);
     cudaFree(d_current);
     return i;
+}
+
+
+void debug(float* d_I_log)
+{
+    float *test;
+    cudaMallocHost(&test, 25 * sizeof(float));
+
+    cudaMemcpy(test, &d_I_log[812 * 1600 + 400], 5 * sizeof(float), cudaMemcpyDeviceToHost);
+    cudaMemcpy(test + 5, &d_I_log[813 * 1600 + 400], 5 * sizeof(float), cudaMemcpyDeviceToHost);
+    cudaMemcpy(test + 10, &d_I_log[814 * 1600 + 400], 5 * sizeof(float), cudaMemcpyDeviceToHost);
+    cudaMemcpy(test + 15, &d_I_log[815 * 1600 + 400], 5 * sizeof(float), cudaMemcpyDeviceToHost);
+    cudaMemcpy(test + 20, &d_I_log[816 * 1600 + 400], 5 * sizeof(float), cudaMemcpyDeviceToHost);
+
+    cudaDeviceSynchronize();
+    
+    std::cout << "12-16, 400-404" << std::endl;
+
+    for (int r = 0; r < 5; ++r) {
+        for (int c = 0; c < 5; ++c) {
+            std::cout << test[r * 5 + c] << " ";
+        }
+        std::cout << std::endl;
+    }
+
+    cudaFreeHost(test);
 }

@@ -12,7 +12,7 @@
 #define M_PI 3.14159265358979323846
 
 
-typedef void (*methodFunction)(const int, const int, const float*, const float*, const dim3, const dim3, float*);
+typedef void (*methodFunction)(const int, const int, const float*, const dim3, const dim3, float*, float*);
 
 /*
     Integration of all the single-grid solvers:
