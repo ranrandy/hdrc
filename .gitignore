@@ -6,6 +6,10 @@ build/*
 *.exe
 *.exp
 *.lib
-*.out
-*.nsys-rep
+# *.out
+*nsys*
+output_debug/*
+*build*
+*profile*
+measure.bat
 output_debug/*
