@@ -8,3 +8,4 @@ build/*
 *.lib
 *.out
 *.nsys-rep
+output_debug/*

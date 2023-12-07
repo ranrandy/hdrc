@@ -109,7 +109,7 @@ def calculate_divergence(Gx, Gy):
                 divG[j, i] -= Gy[j - 1, i]
     return divG
 
-def solve_poisson_equation(div_G, args):
+def solve_poisson_equation_deprecated(div_G, args):
     '''
     Apply the Jacobi iteration method to solve the Poisson equation and get I(x, y) from G(x, y)
     '''
@@ -160,19 +160,55 @@ def solve_poisson_equation(div_G, args):
             break
     return x.reshape(H, W)
 
+def solve_poisson_equation(div_G, args):
+    H, W = div_G.shape[:2]
+    result = np.zeros_like(div_G, dtype=np.float32)
+    current = result.copy()
+
+    up, left, right, bottom = \
+        np.zeros((H, W), dtype=np.float32), np.zeros((H, W), dtype=np.float32), \
+            np.zeros((H, W), dtype=np.float32), np.zeros((H, W), dtype=np.float32)
+
+    # Jacobi iterations
+    for iter in tqdm(range(args.max_iterations)):
+        up[1:, :] = current[:-1, :]
+        up[:1, :] = current[:1, :]
+
+        left[:, 1:] = current[:, :-1]
+        left[:, :1] = current[:, :1]
+        
+        right[:, :-1] = current[:, 1:]
+        right[:, -1:] = current[:, -1:]
+        
+        bottom[:-1, :] = current[1:, :]
+        bottom[-1:, :] = current[-1:, :]
+        
+        result = 0.25 * (up + left + right + bottom - div_G)
+        
+        result, current = current, result
+
+        if iter % 200 == 0:
+            error = np.sum(np.abs(current - result)) / (H * W)
+            print(error)
+            if error < args.tolerance:
+                break
+    if iter % 2 == 1:
+        result, current = current, result
+    return result
+
 def normalize(img):
     return (img - np.min(img)) / (np.max(img) - np.min(img))
 
 if __name__ == "__main__":
     arg_parser = argparse.ArgumentParser(description="Gradient Domain HDR Radiance Map Tone Mapping")
     arg_parser.add_argument("--source", type=str, default="data/belgium.hdr", help="Source HDR radiance map path")
-    arg_parser.add_argument("--output_folder", type=str, default="output", help="Output LDR image folder")
+    arg_parser.add_argument("--output_folder", type=str, default="output_debug", help="Output LDR image folder")
     arg_parser.add_argument("--save_att", action="store_true", help="Save gradient attenuation map")
     arg_parser.add_argument("--alpha", type=float, default=0.18, help="Max \"small\" gradient")
     arg_parser.add_argument("--beta", type=float, default=0.87, help="Attenuation factor for large gradients")
     arg_parser.add_argument("--saturation", type=float, default=0.55, help="Color saturation of the resulting image")
     arg_parser.add_argument("--max_iterations", type=int, default=10000, help="Max number of iterations to run the Jacobi Poisson solver")
-    arg_parser.add_argument("--tolerance", type=float, default=1e-1, help="Tolerance to stop iterating the Jacobi Poisson solver")
+    arg_parser.add_argument("--tolerance", type=float, default=1e-4, help="Tolerance to stop iterating the Jacobi Poisson solver")
     arg_parser.add_argument("--gamma", type=float, default=2.2, help="Global gamma tone mapping")
     args = arg_parser.parse_args()
 
