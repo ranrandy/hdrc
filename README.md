@@ -49,6 +49,7 @@ measure: 1 for testing. 20 for measuring.
 
 ## Remarks
 1. The code is only tested on (H = 1200, W = 1600) and the two sample .hdr images.
+2. The code is tested on Windows 10, Python 3.7, CUDA Toolkits 11.8 with a NVIDIA 4060Ti GPU.
 
 ## References
 Fattal, R., Lischinski, D., & Werman, M. (2023). _Gradient domain high dynamic range compression._ In Seminal Graphics Papers: Pushing the Boundaries, Volume 2 (pp. 671-678).
