@@ -12,6 +12,7 @@ int main(int argc, char* argv[]) {
         warmup = std::stoi(argv[5]),
         measure = std::stoi(argv[6]); 
     float tolerance = std::stof(argv[4]);
+    float omega = (argc == 8) ? std::stof(argv[7]) : 1.45;
 
     std::cout << std::endl; 
     std::cout << "Method: " << method << std::endl; 
@@ -48,10 +49,14 @@ int main(int argc, char* argv[]) {
 
     int iter_converge = 0;
 
+    float *args;
+    cudaMallocHost(&args, sizeof(float));
+    args[0] = omega;
+
     // Warm up
     for (int iter = 0; iter < warmup; ++iter)
     {
-        iter_converge = solver(H, W, d_divG, method, iterations, tolerance, checkFrequency, d_I_log);
+        iter_converge = solver(H, W, d_divG, method, args, iterations, tolerance, checkFrequency, d_I_log);
         cudaDeviceSynchronize();
 
         cudaMemcpy(h_I_log, d_I_log, H * W * sizeof(float), cudaMemcpyDeviceToHost);
@@ -70,7 +75,7 @@ int main(int argc, char* argv[]) {
 
     for (int iter = 0; iter < measure; ++iter)
     {
-        iter_converge = solver(H, W, d_divG, method, iterations, tolerance, checkFrequency, d_I_log);
+        iter_converge = solver(H, W, d_divG, method, args, iterations, tolerance, checkFrequency, d_I_log);
         cudaDeviceSynchronize();
 
         cudaMemcpy(h_I_log, d_I_log, H * W * sizeof(float), cudaMemcpyDeviceToHost);

@@ -12,7 +12,7 @@
 #define M_PI 3.14159265358979323846
 
 
-typedef void (*methodFunction)(const int, const int, const float*, const dim3, const dim3, float*, float*);
+typedef void (*methodFunction)(const int, const int, const float*, const dim3, const dim3, float*, float*, const float*);
 
 /*
     Integration of all the single-grid solvers:
@@ -30,11 +30,11 @@ typedef void (*methodFunction)(const int, const int, const float*, const dim3, c
     2. Gauss-Seidel iterative method with Red-Black Reordering and Overrelaxation (SOR):
         x_{2i}^{k+1} = \frac{1}{4} (x_{i-W}^k + x_{i-1}^k + x_{i+1}^k + x_{i+W}^k - divG_i) * w_opt + x_i^k * (1 - w_opt),
         x_{2i+1}^{k+1} = \frac{1}{4} (x_{i-W}^{k+1} + x_{i-1}^{k+1} + x_{i+1}^{k+1} + x_{i+W}^{k+1} - divG_i) * w_opt + x_i^{k+1} * (1 - w_opt),
-        w_{opt} = \frac{2}{1 + \sqrt{1 - \cos{\pi/max(H, W)}^2}}.
+        w_{opt} = \frac{2}{1 + \sin{\pi/max(H, W)}}}.
 */
 int solver(
     const int H, const int W, 
-    const float* d_divG, const int method,
+    const float* d_divG, const int method, const float* args,
     const int iterations, const float tolerance, const int checkFrequency,
     float* d_I_log
 );

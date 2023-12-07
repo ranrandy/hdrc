@@ -2,8 +2,7 @@
 
 
 /*
-    Kernels for computing the residual/error between the previous and current iteration results.
-    In most cases, atomicAdd should be good.
+    Computing the residual/error between the previous and current iteration results. In most cases, atomicAdd should be fast enough.
 */
 __global__ void atomicAddBlockErrorsKernel(const float* current, const float* previous, float* result, const int N) {
     int tid = threadIdx.x + blockIdx.x * blockDim.x;
@@ -42,7 +41,7 @@ __global__ void atomicAddBlockErrorsKernel(const float* current, const float* pr
 }
 
 /*
-    Kernel for the Jacobi method.
+    0. Jacobi method.
 */
 __global__ void jacobiKernel(const int H, const int W, const float* b, const float *current, float *result) {
     int i = blockIdx.x * blockDim.x + threadIdx.x;
@@ -60,14 +59,14 @@ __global__ void jacobiKernel(const int H, const int W, const float* b, const flo
     result[idx] = 0.25f * (up + left + right + bottom - b[idx]);
 }
 
-void jacobi(const int H, const int W, const float* d_divG, const dim3 nblocks, const dim3 nthreads, float* d_current, float* d_I_log)
+void jacobi(const int H, const int W, const float* d_divG, const dim3 nblocks, const dim3 nthreads, float* d_current, float* d_result, const float* args)
 {
-    jacobiKernel<<<nblocks, nthreads>>>(H, W, d_divG, d_current, d_I_log);
+    jacobiKernel<<<nblocks, nthreads>>>(H, W, d_divG, d_current, d_result);
 }
 
 
 /*
-    Kernels for the Red-Black Gauss-Seildel method.
+    1. Red-Black Gauss-Seildel method.
 */
 __global__ void redGaussSeidelKernel(const int H, const int W, const float* b, const float *current, float *result) {
     int i = blockIdx.x * blockDim.x + threadIdx.x;
@@ -105,15 +104,62 @@ __global__ void blackGaussSeidelKernel(const int H, const int W, const float* b,
     }
 }
 
-void gaussSeidelRedBlack(const int H, const int W, const float* d_divG, const dim3 nblocks, const dim3 nthreads, float* d_current, float* d_I_log)
+void gaussSeidelRedBlack(const int H, const int W, const float* d_divG, const dim3 nblocks, const dim3 nthreads, float* d_current, float* d_result, const float* args)
 {
-    redGaussSeidelKernel<<<nblocks, nthreads>>>(H, W, d_divG, d_current, d_I_log);
-    blackGaussSeidelKernel<<<nblocks, nthreads>>>(H, W, d_divG, d_I_log);
+    redGaussSeidelKernel<<<nblocks, nthreads>>>(H, W, d_divG, d_current, d_result);
+    blackGaussSeidelKernel<<<nblocks, nthreads>>>(H, W, d_divG, d_result);
 }
 
 
 /*
-    Kernels for the Red-Black Gauss-Seildel method with pre-reordered grids.
+    2. Red-Black Gauss-Seildel method with successive over relaxation (SOR).
+*/
+__global__ void redGaussSeidelSORKernel(const int H, const int W, const float* b, const float *current, float *result, const float w_opt) {
+    int i = blockIdx.x * blockDim.x + threadIdx.x;
+    int j = blockIdx.y * blockDim.y + threadIdx.y;
+
+    if (i >= W || j >= H) return;
+
+    int idx = j * W + i;
+
+    if ((i + j) % 2 == 0)
+    {
+        float up = (j > 0) ? current[idx - W] : current[idx];
+        float left = (i > 0) ? current[idx - 1] : current[idx];
+        float right = (i < W - 1) ? current[idx + 1] : current[idx];
+        float bottom = (j < H - 1) ? current[idx + W] : current[idx];
+        result[idx] = (1 - w_opt) * current[idx] + w_opt * 0.25f * (up + left + right + bottom - b[idx]);
+    }
+}
+
+__global__ void blackGaussSeidelSORKernel(const int H, const int W, const float* b, const float *current, float *result, const float w_opt) {
+    int i = blockIdx.x * blockDim.x + threadIdx.x;
+    int j = blockIdx.y * blockDim.y + threadIdx.y;
+
+    if (i >= W || j >= H) return;
+
+    int idx = j * W + i;
+
+    if ((i + j) % 2 == 1)
+    {
+        float up = (j > 0) ? result[idx - W] : result[idx];
+        float left = (i > 0) ? result[idx - 1] : result[idx];
+        float right = (i < W - 1) ? result[idx + 1] : result[idx];
+        float bottom = (j < H - 1) ? result[idx + W] : result[idx];
+        result[idx] = (1 - w_opt) * current[idx] + w_opt * 0.25f * (up + left + right + bottom - b[idx]);
+    }
+}
+
+void gaussSeidelRedBlackSOR(const int H, const int W, const float* d_divG, const dim3 nblocks, const dim3 nthreads, float* d_current, float* d_result, const float* args)
+{
+    // float w_opt = 2.0f / (1.0f + sinf(M_PI / max(H, W)));
+    redGaussSeidelSORKernel<<<nblocks, nthreads>>>(H, W, d_divG, d_current, d_result, args[0]);
+    blackGaussSeidelSORKernel<<<nblocks, nthreads>>>(H, W, d_divG, d_current, d_result, args[0]);
+}
+
+
+/*
+    --> Red-Black pre-reordering of grids.
 */
 __global__ void fillInRedBlackBGaussSeidel2Kernel(const int H, const int W, const float* b, float* red_black_b, const int offset) {
     int i = blockIdx.x * blockDim.x + threadIdx.x;
@@ -140,6 +186,35 @@ __global__ void fillInRedBlackBGaussSeidel2Kernel(const int H, const int W, cons
     }
 }
 
+__global__ void fillInGaussSeidel2Kernel(const int H, const int W, const float* red, const float* black, float* result)
+{
+    int i = blockIdx.x * blockDim.x + threadIdx.x;
+    int j = blockIdx.y * blockDim.y + threadIdx.y;
+
+    if (i >= W || j >= H) return;
+
+    int idx = j * W + i;
+    int squeezed_j;
+
+    if ((j + i) % 2 == 0) // red
+    {
+        if (i % 2 == 1) squeezed_j = (j - 1) / 2;
+        else squeezed_j = j / 2;
+        int squeezed_idx = squeezed_j * W + i; 
+        result[idx] = red[squeezed_idx];
+    }
+    else // black
+    {
+        if (i % 2 == 1) squeezed_j = j / 2;
+        else squeezed_j = (j - 1) / 2; 
+        int squeezed_idx = squeezed_j * W + i; 
+        result[idx] = black[squeezed_idx];
+    }
+}
+
+/*
+    3. Gauss-Seidel with pre-reordering of grids.
+*/
 __global__ void redGaussSeidelKernel2(const int H, const int W, const float* b, const float *black, float *red) {
     int i = blockIdx.x * blockDim.x + threadIdx.x;
     int j = blockIdx.y * blockDim.y + threadIdx.y;
@@ -204,43 +279,16 @@ __global__ void blackGaussSeidelKernel2(const int H, const int W, const float* b
     }
 }
 
-__global__ void fillInGaussSeidel2Kernel(const int H, const int W, const float* red, const float* black, float* result)
-{
-    int i = blockIdx.x * blockDim.x + threadIdx.x;
-    int j = blockIdx.y * blockDim.y + threadIdx.y;
-
-    if (i >= W || j >= H) return;
-
-    int idx = j * W + i;
-    int squeezed_j;
-
-    if ((j + i) % 2 == 0) // red
-    {
-        if (i % 2 == 1) squeezed_j = (j - 1) / 2;
-        else squeezed_j = j / 2;
-        int squeezed_idx = squeezed_j * W + i; 
-        result[idx] = red[squeezed_idx];
-    }
-    else // black
-    {
-        if (i % 2 == 1) squeezed_j = j / 2;
-        else squeezed_j = (j - 1) / 2; 
-        int squeezed_idx = squeezed_j * W + i; 
-        result[idx] = black[squeezed_idx];
-    }
-}
-
-void gaussSeidelRedBlack2(const int H, const int W, const float* d_divG, const dim3 nblocks, const dim3 nthreads, float* red, float* black)
+void gaussSeidelRedBlack2(const int H, const int W, const float* d_divG, const dim3 nblocks, const dim3 nthreads, float* red, float* black, const float* args)
 {
     redGaussSeidelKernel2<<<nblocks, nthreads>>>(H, W, d_divG, black, red);
     blackGaussSeidelKernel2<<<nblocks, nthreads>>>(H, W, d_divG, red, black, (H * W) / 2);
 }
 
-
 /*
-    Kernels for the Red-Black Gauss-Seildel method with overrelaxation.
+    4. Gauss-Seidel with SOR and pre-reordering of grids.
 */
-__global__ void redGaussSeidelSORKernel(const int H, const int W, const float* b, const float *current, float *result, const float w_opt) {
+__global__ void redGaussSeidelKernel2SOR(const int H, const int W, const float* b, const float *black, float *red, const float w_opt) {
     int i = blockIdx.x * blockDim.x + threadIdx.x;
     int j = blockIdx.y * blockDim.y + threadIdx.y;
 
@@ -248,49 +296,72 @@ __global__ void redGaussSeidelSORKernel(const int H, const int W, const float* b
 
     int idx = j * W + i;
 
-    if ((i + j) % 2 == 0)
+    if (i % 2 == 1)
     {
-        float up = (j > 0) ? current[idx - W] : current[idx];
-        float left = (i > 0) ? current[idx - 1] : current[idx];
-        float right = (i < W - 1) ? current[idx + 1] : current[idx];
-        float bottom = (j < H - 1) ? current[idx + W] : current[idx];
-        
-        float GS_update = 0.25f * (up + left + right + bottom - b[idx]);
-        result[idx] = (1 - w_opt) * current[idx] + w_opt * GS_update;
+        int orig_j = j * 2 + 1;
+        if (orig_j >= H) return;
+
+        float up = black[idx];
+        float left = black[idx - 1];
+        float right = (i < W - 1) ? black[idx + 1] : red[idx];
+        float bottom = (orig_j < H - 1) ? black[idx + W] : red[idx];
+        red[idx] = (1 - w_opt) * red[idx] + w_opt * 0.25f * (up + left + right + bottom - b[idx]);
+    }
+    else
+    {
+        int orig_j = j * 2;
+        if (orig_j >= H) return;
+
+        float up = (orig_j > 0) ? black[idx - W] : red[idx];
+        float left = (i > 0) ? black[idx - 1] : red[idx];
+        float right = (i < W - 1) ? black[idx + 1] : red[idx];
+        float bottom = (orig_j < H - 1) ? black[idx] : red[idx];
+        red[idx] = (1 - w_opt) * red[idx] + w_opt * 0.25f * (up + left + right + bottom - b[idx]);
     }
 }
 
-__global__ void blackGaussSeidelSORKernel(const int H, const int W, const float* b, float *result, const float w_opt) {
+__global__ void blackGaussSeidelKernel2SOR(const int H, const int W, const float* b, const float *red, float *black, const int offset, const float w_opt) {
     int i = blockIdx.x * blockDim.x + threadIdx.x;
     int j = blockIdx.y * blockDim.y + threadIdx.y;
 
-    if (i >= W || j >= H) return;
+    if (i >= W) return;
 
     int idx = j * W + i;
 
-    if ((i + j) % 2 == 1)
+    if (i % 2 == 1)
     {
-        float up = (j > 0) ? result[idx - W] : result[idx];
-        float left = (i > 0) ? result[idx - 1] : result[idx];
-        float right = (i < W - 1) ? result[idx + 1] : result[idx];
-        float bottom = (j < H - 1) ? result[idx + W] : result[idx];
+        int orig_j = j * 2;
+        if (orig_j >= H) return;
 
-        float GS_update = 0.25f * (up + left + right + bottom - b[idx]);
-        result[idx] = (1 - w_opt) * result[idx] + w_opt * GS_update;
+        float up = (orig_j > 0) ? red[idx - W] : black[idx];
+        float left = red[idx - 1];
+        float right = (i < W - 1) ? red[idx + 1] : black[idx];
+        float bottom = (orig_j < H - 1) ? red[idx] : black[idx];
+        black[idx] = (1 - w_opt) * black[idx] + w_opt * 0.25f * (up + left + right + bottom - b[idx + offset]);
+    }
+    else
+    {
+        int orig_j = j * 2 + 1;
+        if (orig_j >= H) return;
+
+        float up = red[idx];
+        float left = (i > 0) ? red[idx - 1] : black[idx];
+        float right = (i < W - 1) ? red[idx + 1] : black[idx];
+        float bottom = (orig_j < H - 1) ? red[idx + W] : black[idx];
+        black[idx] = (1 - w_opt) * black[idx] + w_opt * 0.25f * (up + left + right + bottom - b[idx + offset]);
     }
 }
 
-void gaussSeidelRedBlackSOR(const int H, const int W, const float* d_divG, const dim3 nblocks, const dim3 nthreads, float* d_current, float* d_I_log)
+void gaussSeidelRedBlack2SOR(const int H, const int W, const float* d_divG, const dim3 nblocks, const dim3 nthreads, float* red, float* black, const float* args)
 {
-    float w_opt = 2.0f / (1.0f + sqrtf(1.0f - powf(cosf(M_PI / max(H, W)), 2.0f)));
-    redGaussSeidelSORKernel<<<nblocks, nthreads>>>(H, W, d_divG, d_current, d_I_log, w_opt);
-    blackGaussSeidelSORKernel<<<nblocks, nthreads>>>(H, W, d_divG, d_I_log, w_opt);
+    redGaussSeidelKernel2SOR<<<nblocks, nthreads>>>(H, W, d_divG, black, red, args[0]);
+    blackGaussSeidelKernel2SOR<<<nblocks, nthreads>>>(H, W, d_divG, red, black, (H * W) / 2, args[0]);
 }
 
 
 int solver(
     const int H, const int W, 
-    const float* d_divG, const int method,
+    const float* d_divG, const int method, const float* args, 
     const int iterations, const float tolerance, const int checkFrequency,
     float* d_I_log)
 {
@@ -305,10 +376,13 @@ int solver(
             methodKernel = gaussSeidelRedBlack;
             break;
         case 2:
-            methodKernel = gaussSeidelRedBlack2;
+            methodKernel = gaussSeidelRedBlackSOR;
             break;
         case 3:
-            methodKernel = gaussSeidelRedBlackSOR;
+            methodKernel = gaussSeidelRedBlack2;
+            break;
+        case 4:
+            methodKernel = gaussSeidelRedBlack2SOR;
             break;
         default:
             return -1;
@@ -319,7 +393,7 @@ int solver(
     float *error_d;
     cudaMalloc(&error_d, sizeof(float));
 
-    if (method == 0 || method == 1) 
+    if (method <= 2) 
     {                
         dim3 nthreadsMethod(16, 16, 1);
         dim3 nblocksMethod((W + nthreadsMethod.x - 1) / nthreadsMethod.x, (H + nthreadsMethod.y - 1) / nthreadsMethod.y, 1);
@@ -333,7 +407,7 @@ int solver(
         int i = 0;
         for (; i < iterations; ) 
         {
-            methodKernel(H, W, d_divG, nblocksMethod, nthreadsMethod, d_current, d_result);
+            methodKernel(H, W, d_divG, nblocksMethod, nthreadsMethod, d_current, d_result, args);
             cudaDeviceSynchronize(); 
             std::swap(d_current, d_result); ++i;
 
@@ -357,7 +431,7 @@ int solver(
         return i;
     }
 
-    if (method == 2) 
+    if (method > 2) 
     {
         dim3 nthreadsMethod(32, 16, 1);
         dim3 nblocksMethod((W + nthreadsMethod.x - 1) / nthreadsMethod.x, (int(H/2) + nthreadsMethod.y - 1) / nthreadsMethod.y, 1);
@@ -383,7 +457,7 @@ int solver(
         {
             if ((i+1) % checkFrequency == 0) cudaMemcpy(prev_red, red, N2 * sizeof(float), cudaMemcpyDeviceToDevice);
 
-            methodKernel(H, W, red_black_divG, nblocksMethod, nthreadsMethod, red, black);
+            methodKernel(H, W, red_black_divG, nblocksMethod, nthreadsMethod, red, black, args);
             cudaDeviceSynchronize();
             ++i;
 
