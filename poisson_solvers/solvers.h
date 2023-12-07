@@ -15,7 +15,7 @@
 typedef void (*methodFunction)(const int, const int, const float*, const dim3, const dim3, float*, float*, const float*);
 
 /*
-    Integration of all the single-grid solvers:
+    Integration of all the single-grid poisson solvers:
     
     0. Jacobi iterative method:
         x_i^{k+1} = \frac{1}{4} (x_{i-W}^k + x_{i-1}^k + x_{i+1}^k + x_{i+W}^k - divG_i).
@@ -31,8 +31,12 @@ typedef void (*methodFunction)(const int, const int, const float*, const dim3, c
         x_{2i}^{k+1} = \frac{1}{4} (x_{i-W}^k + x_{i-1}^k + x_{i+1}^k + x_{i+W}^k - divG_i) * w_opt + x_i^k * (1 - w_opt),
         x_{2i+1}^{k+1} = \frac{1}{4} (x_{i-W}^{k+1} + x_{i-1}^{k+1} + x_{i+1}^{k+1} + x_{i+W}^{k+1} - divG_i) * w_opt + x_i^{k+1} * (1 - w_opt),
         w_{opt} = \frac{2}{1 + \sin{\pi/max(H, W)}}}.
+
+    3. Same as 1 but with pre-reordered grids.
+
+    4. Same as 2 but with pre-reordered grids.
 */
-int solver(
+int simpleSolver(
     const int H, const int W, 
     const float* d_divG, const int method, const float* args,
     const int iterations, const float tolerance, const int checkFrequency,
@@ -41,9 +45,15 @@ int solver(
 
 
 /*
-    Full Multigrid Poisson Solver with Gauss-Seidel smoothing iteration + Red-Black Reordering and Overrelaxation (SOR).
+    Integration of all multigrid poisson solvers with "Gauss-Seidel + Red-Black Pre-Reordering + SOR".
+
+    0. V-Cycle
+
+    1. W-Cycle
+
+    2. FMG
 */
-void fullMultigridSolver(
+void multigridSolver(
     const int H, const int W, 
     const float* d_divG, 
     const int iterations, const float tolerance, const int checkFrequency,

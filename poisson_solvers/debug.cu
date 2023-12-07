@@ -15,13 +15,14 @@ int main(int argc, char* argv[]) {
     float omega = (argc == 8) ? std::stof(argv[7]) : 1.45;
 
     std::cout << std::endl; 
-    std::cout << "Method: " << method << std::endl; 
+    std::cout << "method: " << method << std::endl; 
     std::cout << "iterations: " << iterations << std::endl; 
     std::cout << "checkFrequency: " << checkFrequency << std::endl; 
     std::cout << "tolerance: " << tolerance << std::endl; 
     std::cout << std::endl; 
     std::cout << "warmup: " << warmup << std::endl; 
     std::cout << "measure: " << measure << std::endl;
+    std::cout << "omega: " << omega << std::endl;
     std::cout << std::endl; 
     
     // --------------------------------------------- 2D ---------------------------------------------
@@ -56,7 +57,7 @@ int main(int argc, char* argv[]) {
     // Warm up
     for (int iter = 0; iter < warmup; ++iter)
     {
-        iter_converge = solver(H, W, d_divG, method, args, iterations, tolerance, checkFrequency, d_I_log);
+        iter_converge = simpleSolver(H, W, d_divG, method, args, iterations, tolerance, checkFrequency, d_I_log);
         cudaDeviceSynchronize();
 
         cudaMemcpy(h_I_log, d_I_log, H * W * sizeof(float), cudaMemcpyDeviceToHost);
@@ -75,7 +76,7 @@ int main(int argc, char* argv[]) {
 
     for (int iter = 0; iter < measure; ++iter)
     {
-        iter_converge = solver(H, W, d_divG, method, args, iterations, tolerance, checkFrequency, d_I_log);
+        iter_converge = simpleSolver(H, W, d_divG, method, args, iterations, tolerance, checkFrequency, d_I_log);
         cudaDeviceSynchronize();
 
         cudaMemcpy(h_I_log, d_I_log, H * W * sizeof(float), cudaMemcpyDeviceToHost);

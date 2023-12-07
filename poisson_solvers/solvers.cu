@@ -359,7 +359,7 @@ void gaussSeidelRedBlack2SOR(const int H, const int W, const float* d_divG, cons
 }
 
 
-int solver(
+int simpleSolver(
     const int H, const int W, 
     const float* d_divG, const int method, const float* args, 
     const int iterations, const float tolerance, const int checkFrequency,
@@ -489,7 +489,7 @@ int solver(
 }
 
 
-void fullMultigridSolver(    
+void multigridSolver(    
     const int H, const int W, 
     const float* d_divG, 
     const int iterations, const float tolerence,
