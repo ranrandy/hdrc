@@ -2,7 +2,7 @@
 
 
 /*
-    Computing the residual/error between the previous and current iteration results. In most cases, atomicAdd should be fast enough.
+    Computing the error between the previous and current iteration results. In most cases, atomicAdd should be fast enough.
 */
 __global__ void atomicAddBlockErrorsKernel(const float* current, const float* previous, float* result, const int N) {
     int tid = threadIdx.x + blockIdx.x * blockDim.x;
@@ -161,6 +161,29 @@ void gaussSeidelRedBlackSOR(const int H, const int W, const float* d_divG, const
 /*
     --> Red-Black pre-reordering of grids.
 */
+__global__ void fillInRedBlackInitGaussSeidel2Kernel(const int H, const int W, const float* init_guess, float* red, float* black) {
+    int i = blockIdx.x * blockDim.x + threadIdx.x;
+    int j = blockIdx.y * blockDim.y + threadIdx.y;
+
+    if (i >= W || j >= H) return;
+
+    int idx = j * W + i;
+    int squeezed_j;
+
+    if ((i+j) % 2 == 0) // red
+    {
+        if (i % 2 == 1) squeezed_j = (j - 1) / 2;
+        else squeezed_j = j / 2;
+        red[squeezed_j * W + i] = init_guess[idx];
+    }
+    else // black
+    {
+        if (i % 2 == 1) squeezed_j = j / 2;
+        else squeezed_j = (j - 1) / 2; 
+        black[squeezed_j * W + i] = init_guess[idx];
+    }
+}
+
 __global__ void fillInRedBlackBGaussSeidel2Kernel(const int H, const int W, const float* b, float* red_black_b, const int offset) {
     int i = blockIdx.x * blockDim.x + threadIdx.x;
     int j = blockIdx.y * blockDim.y + threadIdx.y;
@@ -174,15 +197,13 @@ __global__ void fillInRedBlackBGaussSeidel2Kernel(const int H, const int W, cons
     {
         if (i % 2 == 1) squeezed_j = (j - 1) / 2;
         else squeezed_j = j / 2;
-        int squeezed_idx = squeezed_j * W + i; 
-        red_black_b[squeezed_idx] = b[idx];
+        red_black_b[squeezed_j * W + i] = b[idx];
     }
     else // black
     {
         if (i % 2 == 1) squeezed_j = j / 2;
         else squeezed_j = (j - 1) / 2; 
-        int squeezed_idx = squeezed_j * W + i; 
-        red_black_b[squeezed_idx + offset] = b[idx];
+        red_black_b[squeezed_j * W + i + offset] = b[idx];
     }
 }
 
@@ -361,7 +382,7 @@ void gaussSeidelRedBlack2SOR(const int H, const int W, const float* d_divG, cons
 
 int simpleSolver(
     const int H, const int W, 
-    const float* d_divG, const int method, const float* args, 
+    const float* d_divG, const int method, const float* args, const float* d_init_guess, 
     const int iterations, const float tolerance, const int checkFrequency,
     float* d_I_log)
 {
@@ -389,9 +410,9 @@ int simpleSolver(
     }
 
     int nblocksError = (N + MAX_THREADS - 1) / MAX_THREADS;
-    float error_h;
-    float *error_d;
-    cudaMalloc(&error_d, sizeof(float));
+    float h_error;
+    float *d_error;
+    cudaMalloc(&d_error, sizeof(float));
 
     if (method <= 2) 
     {                
@@ -401,6 +422,8 @@ int simpleSolver(
         float *d_current, *d_result;
         cudaMalloc(&d_current, N * sizeof(float));
         cudaMemset(d_current, 0.0, N * sizeof(float));
+        if (d_init_guess != nullptr) cudaMemcpy(d_current, d_init_guess, N * sizeof(float), cudaMemcpyDeviceToDevice);
+
         cudaMalloc(&d_result, N * sizeof(float));
         cudaMemset(d_result, 0.0, N * sizeof(float));
 
@@ -413,13 +436,13 @@ int simpleSolver(
 
             if (i % checkFrequency == 0)
             {   
-                cudaMemset(error_d, 0.0, sizeof(float));
-                atomicAddBlockErrorsKernel<<<nblocksError, MAX_THREADS>>>(d_current, d_result, error_d, N);
+                cudaMemset(d_error, 0.0, sizeof(float));
+                atomicAddBlockErrorsKernel<<<nblocksError, MAX_THREADS>>>(d_current, d_result, d_error, N);
                 cudaDeviceSynchronize();
-                cudaMemcpy(&error_h, error_d, sizeof(float), cudaMemcpyDeviceToHost);
-                error_h /= N;
+                cudaMemcpy(&h_error, d_error, sizeof(float), cudaMemcpyDeviceToHost);
+                h_error /= N;
 
-                if (error_h < tolerance) break;
+                if (h_error < tolerance) break;
             }
         }
 
@@ -427,7 +450,7 @@ int simpleSolver(
         cudaMemcpy(d_I_log, d_result, N * sizeof(float), cudaMemcpyDeviceToDevice);
         cudaFree(d_current);
         cudaFree(d_result);
-        cudaFree(error_d);
+        cudaFree(d_error);
         return i;
     }
 
@@ -444,6 +467,7 @@ int simpleSolver(
         cudaMemset(red, 0.0, N2 * sizeof(float));
         cudaMalloc(&black, N2 * sizeof(float));
         cudaMemset(black, 0.0, N2 * sizeof(float));
+        if (d_init_guess != nullptr) fillInRedBlackInitGaussSeidel2Kernel<<<nblocksFillIn, nthreadsFillIn>>>(H, W, d_init_guess, red, black);
 
         float *prev_red;
         cudaMalloc(&prev_red, N2 * sizeof(float));
@@ -463,13 +487,13 @@ int simpleSolver(
 
             if (i % checkFrequency == 0)
             {   
-                cudaMemset(error_d, 0.0, sizeof(float));
-                atomicAddBlockErrorsKernel<<<nblocksError, MAX_THREADS>>>(red, prev_red, error_d, N2);
+                cudaMemset(d_error, 0.0, sizeof(float));
+                atomicAddBlockErrorsKernel<<<nblocksError, MAX_THREADS>>>(red, prev_red, d_error, N2);
                 cudaDeviceSynchronize();
-                cudaMemcpy(&error_h, error_d, sizeof(float), cudaMemcpyDeviceToHost);
-                error_h /= N2;
+                cudaMemcpy(&h_error, d_error, sizeof(float), cudaMemcpyDeviceToHost);
+                h_error /= N2;
 
-                if (error_h < tolerance) break;
+                if (h_error < tolerance) break;
             }
         }
 
@@ -480,20 +504,134 @@ int simpleSolver(
         cudaFree(black);
         cudaFree(prev_red);
         cudaFree(red_black_divG);
-        cudaFree(error_d);
+        cudaFree(d_error);
         return i;
     }
 
-    cudaFree(error_d);
+    cudaFree(d_error);
     return -1;
 }
 
 
-void multigridSolver(    
+__global__ void computeResidualKernel(const int H, const int W, const float* b_h, const float* u_h, float* r_h) {
+    int i = blockIdx.x * blockDim.x + threadIdx.x;
+    int j = blockIdx.y * blockDim.y + threadIdx.y;
+
+    if (i >= W || j >= H) return;
+
+    int idx = j * W + i;
+
+    float up = (j > 0) ? u_h[idx - W] : u_h[idx];
+    float left = (i > 0) ? u_h[idx - 1] : u_h[idx];
+    float right = (i < W - 1) ? u_h[idx + 1] : u_h[idx];
+    float bottom = (j < H - 1) ? u_h[idx + W] : u_h[idx];
+
+    r_h[idx] = b_h[idx] - (up + left + right + bottom - 4 * u_h[idx]);
+}
+
+__global__ void restrict1DKernel(const int N, const int N2, const float* r_h, float* r_2h) {
+    int tid = blockIdx.x * blockDim.x + threadIdx.x;
+
+    if (tid >= N2) return;
+
+    int idx = tid * 2 + 1;
+
+    float up = r_h[idx-1];
+    float middle = r_h[idx];
+    float bottom = (idx < N - 1) ? r_h[idx+1] : r_h[idx];
+
+    r_2h[tid] = 0.25 * (up + middle * 2 + bottom);
+}
+
+__global__ void interpolate1DKernel(const int N, const float* E_2h, float* E_h) {
+    int tid = blockIdx.x * blockDim.x + threadIdx.x;
+    int idx = tid / 2;
+
+    if (tid >= N) return;
+
+    float left, right;
+
+    if (tid % 2 == 0) 
+    {
+        left = (idx > 0) ? E_2h[idx-1] : 0;
+        right = E_2h[idx];
+    }
+    else
+    {
+        left = E_2h[idx];
+        right = E_2h[idx];
+    }
+
+    E_h[tid] = 0.5 * (left + right);
+}
+
+__global__ void add1DKernel(const int N, const float* E_h, float* u_h) {
+    int tid = blockIdx.x * blockDim.x + threadIdx.x;
+
+    if (tid >= N) return;
+
+    u_h[tid] += E_h[tid];
+}
+
+
+int multigridSolver(    
     const int H, const int W, 
-    const float* d_divG, 
-    const int iterations, const float tolerence,
+    const float* d_divG, const int method, const float* args,
+    const int pre_post_smoothing_iterations,
     float* d_I_log)
 {
+    const int N = H * W, N2 = H * W / 2;
+    const int H2 = H / 2, W2 = W / 2;
 
+    // Step 1: Iterate on A_h * u = b_h to reach u_h (say 3 Jacobi or Gauss-Seidel steps)
+    float *d_u_h;
+    cudaMalloc(&d_u_h, N * sizeof(float));
+    int pre_smoothing_iter = simpleSolver(H, W, d_divG, args[4], args, nullptr, pre_post_smoothing_iterations, args[3], args[2], d_u_h);
+    cudaDeviceSynchronize();
+
+    // Step 2: Restrict the residual r_h = b_h − A_h * u_h to the coarse grid by r_{2h} = R_{h}^{2h} * r_h
+    float *d_r_h;
+    cudaMalloc(&d_r_h, N * sizeof(float));
+    dim3 nthreadsResidual(16, 16, 1);
+    dim3 nblocksResidual((W + nthreadsResidual.x - 1) / nthreadsResidual.x, (H + nthreadsResidual.y - 1) / nthreadsResidual.y, 1);
+    computeResidualKernel<<<nblocksResidual, nthreadsResidual>>>(H, W, d_divG, d_u_h, d_r_h);
+    cudaDeviceSynchronize();
+
+    float *d_r_2h;
+    cudaMalloc(&d_r_2h, N2 * sizeof(float));
+    dim3 nthreadsRestrict1D(256, 1, 1);
+    dim3 nblocksRestrict1D((N2 + nthreadsRestrict1D.x - 1) / nthreadsRestrict1D.x, 1, 1);
+    restrict1DKernel<<<nblocksRestrict1D, nthreadsRestrict1D>>>(N, N2, d_r_h, d_r_2h);
+    cudaDeviceSynchronize();
+
+    // Step 3: Solve A_{2h} * E_{2h} = r_{2h} (or come close to E_{2h} by 3 iterations from E = 0)
+    float *d_E_2h;
+    cudaMalloc(&d_E_2h, N2 * sizeof(float));
+    int cycle_smoothing_iter = simpleSolver(H2, W2, d_r_2h, args[4], args, nullptr, args[1], args[3], args[2], d_E_2h);
+    cudaDeviceSynchronize();
+
+    // Step 4: Interpolate E_{2h} back to E_h = I_{2h}^h * E_{2h}. Add E_h to u_h
+    float *d_E_h;
+    cudaMalloc(&d_E_h, N * sizeof(float));
+    dim3 nthreadsInterpolate1D(256, 1, 1);
+    dim3 nblocksInterpolate1D((N + nthreadsInterpolate1D.x - 1) / nthreadsInterpolate1D.x, 1, 1);
+    interpolate1DKernel<<<nblocksInterpolate1D, nthreadsInterpolate1D>>>(N, d_E_2h, d_E_h);
+    cudaDeviceSynchronize();
+
+    // Step 5: Iterate 3 more times on A_h * u = b_h starting from the improved u_h + E_h.
+    dim3 nthreadsAdd1D(256, 1, 1);
+    dim3 nblocksAdd1D((N + nthreadsAdd1D.x - 1) / nthreadsAdd1D.x, 1, 1);
+    add1DKernel<<<nblocksAdd1D, nthreadsAdd1D>>>(N, d_E_h, d_u_h);
+    cudaDeviceSynchronize();
+
+    int post_smoothing_iter = simpleSolver(H, W, d_divG, args[4], args, d_u_h, pre_post_smoothing_iterations, args[3], args[2], d_I_log);
+    cudaDeviceSynchronize();
+
+    cudaFree(d_u_h);
+    cudaFree(d_r_h);
+    cudaFree(d_r_2h);
+    cudaFree(d_E_2h);
+    cudaFree(d_E_h);
+
+    return pre_smoothing_iter + post_smoothing_iter + cycle_smoothing_iter;
 }

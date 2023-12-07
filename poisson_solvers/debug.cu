@@ -10,13 +10,16 @@ int main(int argc, char* argv[]) {
         iterations = std::stoi(argv[2]), 
         checkFrequency = std::stoi(argv[3]), 
         warmup = std::stoi(argv[5]),
-        measure = std::stoi(argv[6]); 
+        measure = std::stoi(argv[6]);
+    int multigridCoarseIterations = (method > 4) ? std::stoi(argv[8]) : 0; 
+    int multigridSmoothingMethod = (method > 4) ? std::stoi(argv[9]) : 0; 
     float tolerance = std::stof(argv[4]);
     float omega = (argc == 8) ? std::stof(argv[7]) : 1.45;
 
     std::cout << std::endl; 
     std::cout << "method: " << method << std::endl; 
     std::cout << "iterations: " << iterations << std::endl; 
+    std::cout << "multigridCoarseIterations: " << multigridCoarseIterations << std::endl; 
     std::cout << "checkFrequency: " << checkFrequency << std::endl; 
     std::cout << "tolerance: " << tolerance << std::endl; 
     std::cout << std::endl; 
@@ -51,13 +54,18 @@ int main(int argc, char* argv[]) {
     int iter_converge = 0;
 
     float *args;
-    cudaMallocHost(&args, sizeof(float));
+    cudaMallocHost(&args, 5 * sizeof(float));
     args[0] = omega;
+    args[1] = multigridCoarseIterations;
+    args[2] = checkFrequency;
+    args[3] = tolerance;
+    args[4] = multigridSmoothingMethod;
 
     // Warm up
     for (int iter = 0; iter < warmup; ++iter)
     {
-        iter_converge = simpleSolver(H, W, d_divG, method, args, iterations, tolerance, checkFrequency, d_I_log);
+        if (method <= 4) iter_converge = simpleSolver(H, W, d_divG, method, args, nullptr, iterations, tolerance, checkFrequency, d_I_log);
+        else iter_converge = multigridSolver(H, W, d_divG, method, args, iterations, d_I_log);
         cudaDeviceSynchronize();
 
         cudaMemcpy(h_I_log, d_I_log, H * W * sizeof(float), cudaMemcpyDeviceToHost);
@@ -76,7 +84,8 @@ int main(int argc, char* argv[]) {
 
     for (int iter = 0; iter < measure; ++iter)
     {
-        iter_converge = simpleSolver(H, W, d_divG, method, args, iterations, tolerance, checkFrequency, d_I_log);
+        if (method <= 4) iter_converge = simpleSolver(H, W, d_divG, method, args, nullptr, iterations, tolerance, checkFrequency, d_I_log);
+        else iter_converge = multigridSolver(H, W, d_divG, method, args, iterations, d_I_log);
         cudaDeviceSynchronize();
 
         cudaMemcpy(h_I_log, d_I_log, H * W * sizeof(float), cudaMemcpyDeviceToHost);

@@ -11,3 +11,6 @@ Attenuation map of the Belgium House scene.
 
 ### References
 Fattal, R., Lischinski, D., & Werman, M. (2023). _Gradient domain high dynamic range compression._ In Seminal Graphics Papers: Pushing the Boundaries, Volume 2 (pp. 671-678).
+
+## TODO
+1. The code currently is only tested on H = 1200 and W = 1600.
