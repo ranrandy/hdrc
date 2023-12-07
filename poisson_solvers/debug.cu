@@ -6,26 +6,80 @@
 
 
 int main(int argc, char* argv[]) {
-    int method = std::stoi(argv[1]), 
-        iterations = std::stoi(argv[2]), 
-        checkFrequency = std::stoi(argv[3]), 
-        warmup = std::stoi(argv[5]),
-        measure = std::stoi(argv[6]);
-    int multigridCoarseIterations = (method > 4) ? std::stoi(argv[8]) : 0; 
-    int multigridSmoothingMethod = (method > 4) ? std::stoi(argv[9]) : 0; 
-    float tolerance = std::stof(argv[4]);
-    float omega = (argc == 8) ? std::stof(argv[7]) : 1.45;
+    int method = std::stoi(argv[1]);
+    int warmup = std::stoi(argv[2]);
+    int measure = std::stoi(argv[3]);
+    int iterations = std::stoi(argv[4]);
+    int checkFrequency = std::stoi(argv[5]); 
+    float tolerance = std::stof(argv[6]);
 
     std::cout << std::endl; 
-    std::cout << "method: " << method << std::endl; 
-    std::cout << "iterations: " << iterations << std::endl; 
-    std::cout << "multigridCoarseIterations: " << multigridCoarseIterations << std::endl; 
-    std::cout << "checkFrequency: " << checkFrequency << std::endl; 
-    std::cout << "tolerance: " << tolerance << std::endl; 
-    std::cout << std::endl; 
+    std::cout << "method: " << method << std::endl;
     std::cout << "warmup: " << warmup << std::endl; 
     std::cout << "measure: " << measure << std::endl;
-    std::cout << "omega: " << omega << std::endl;
+    std::cout << std::endl; 
+    
+    if (method <= 4)
+    {
+        std::cout << "iterations: " << iterations << std::endl; 
+        std::cout << "checkFrequency: " << checkFrequency << std::endl; 
+        std::cout << "tolerance: " << tolerance << std::endl; 
+    }
+    else
+    {
+        std::cout << "cycleIterations: " << iterations << std::endl; 
+        std::cout << "checkCycleFrequency: " << checkFrequency << std::endl; 
+        std::cout << "cycleTolerance: " << tolerance << std::endl; 
+    }
+    std::cout << std::endl; 
+
+    float *args;
+    
+    if (method <= 4) 
+    {
+        float omega = (argc == 8) ? std::stof(argv[7]) : 1.45;
+
+        cudaMallocHost(&args, 1 * sizeof(float));
+        args[0] = omega;
+        
+        std::cout << "omega: " << omega << std::endl;
+    } 
+    else 
+    {
+        int multigridSmoothingMethod = std::stoi(argv[7]); 
+        int prepostSmoothingIterations = std::stoi(argv[8]);
+
+        int coarsestSideLength = std::stoi(argv[9]);
+
+        int multigridCoarsestIterations = std::stoi(argv[10]);
+        int checkCoarsestFrequency = std::stoi(argv[11]);
+        float CoarsestTolerance = std::stof(argv[12]);
+        
+        float omega = (argc == 13) ? std::stof(argv[13]) : 1.45;
+
+        cudaMallocHost(&args, 7 * sizeof(float));
+        args[0] = multigridSmoothingMethod;
+        args[1] = prepostSmoothingIterations;
+        
+        args[2] = coarsestSideLength;
+
+        args[3] = multigridCoarsestIterations;
+        args[4] = checkCoarsestFrequency;
+        args[5] = CoarsestTolerance;
+        
+        args[6] = omega;
+        
+        std::cout << "multigridSmoothingMethod: " << multigridSmoothingMethod << std::endl; 
+        std::cout << "prepostSmoothingIterations: " << prepostSmoothingIterations << std::endl; 
+        std::cout << std::endl; 
+        std::cout << "coarsestSideLength: " << coarsestSideLength << std::endl; 
+        std::cout << std::endl; 
+        std::cout << "multigridCoarsestIterations: " << multigridCoarsestIterations << std::endl; 
+        std::cout << "checkCoarsestFrequency: " << checkCoarsestFrequency << std::endl; 
+        std::cout << "CoarsestTolerance: " << CoarsestTolerance << std::endl; 
+        std::cout << std::endl; 
+        std::cout << "omega: " << omega << std::endl;
+    }
     std::cout << std::endl; 
     
     // --------------------------------------------- 2D ---------------------------------------------
@@ -53,19 +107,19 @@ int main(int argc, char* argv[]) {
 
     int iter_converge = 0;
 
-    float *args;
-    cudaMallocHost(&args, 5 * sizeof(float));
-    args[0] = omega;
-    args[1] = multigridCoarseIterations;
-    args[2] = checkFrequency;
-    args[3] = tolerance;
-    args[4] = multigridSmoothingMethod;
-
     // Warm up
     for (int iter = 0; iter < warmup; ++iter)
     {
-        if (method <= 4) iter_converge = simpleSolver(H, W, d_divG, method, args, nullptr, iterations, tolerance, checkFrequency, d_I_log);
-        else iter_converge = multigridSolver(H, W, d_divG, method, args, iterations, d_I_log);
+        if (method <= 4) iter_converge = simpleSolver(
+            H, W, d_divG, 
+            method, args, nullptr, 
+            iterations, checkFrequency, tolerance, 
+            d_I_log);
+        else iter_converge = multigridSolver(
+            H, W, d_divG, 
+            method, args, 
+            iterations, checkFrequency, tolerance,
+            d_I_log);
         cudaDeviceSynchronize();
 
         cudaMemcpy(h_I_log, d_I_log, H * W * sizeof(float), cudaMemcpyDeviceToHost);
@@ -84,8 +138,16 @@ int main(int argc, char* argv[]) {
 
     for (int iter = 0; iter < measure; ++iter)
     {
-        if (method <= 4) iter_converge = simpleSolver(H, W, d_divG, method, args, nullptr, iterations, tolerance, checkFrequency, d_I_log);
-        else iter_converge = multigridSolver(H, W, d_divG, method, args, iterations, d_I_log);
+        if (method <= 4) iter_converge = simpleSolver(
+            H, W, d_divG, 
+            method, args, nullptr, 
+            iterations, checkFrequency, tolerance, 
+            d_I_log);
+        else iter_converge = multigridSolver(
+            H, W, d_divG, 
+            method, args, 
+            iterations, checkFrequency, tolerance, 
+            d_I_log);
         cudaDeviceSynchronize();
 
         cudaMemcpy(h_I_log, d_I_log, H * W * sizeof(float), cudaMemcpyDeviceToHost);

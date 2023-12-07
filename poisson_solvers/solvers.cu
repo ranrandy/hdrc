@@ -383,7 +383,7 @@ void gaussSeidelRedBlack2SOR(const int H, const int W, const float* d_divG, cons
 int simpleSolver(
     const int H, const int W, 
     const float* d_divG, const int method, const float* args, const float* d_init_guess, 
-    const int iterations, const float tolerance, const int checkFrequency,
+    const int iterations, const int checkFrequency, const float tolerance,
     float* d_I_log)
 {
     const int N = H * W, N2 = H * W / 2;
@@ -577,7 +577,7 @@ __global__ void add1DKernel(const int N, const float* E_h, float* u_h) {
 int multigridSolver(    
     const int H, const int W, 
     const float* d_divG, const int method, const float* args,
-    const int pre_post_smoothing_iterations,
+    const int iterations, const int checkFrequency, const float tolerance,
     float* d_I_log)
 {
     const int N = H * W, N2 = H * W / 2;
@@ -586,7 +586,7 @@ int multigridSolver(
     // Step 1: Iterate on A_h * u = b_h to reach u_h (say 3 Jacobi or Gauss-Seidel steps)
     float *d_u_h;
     cudaMalloc(&d_u_h, N * sizeof(float));
-    int pre_smoothing_iter = simpleSolver(H, W, d_divG, args[4], args, nullptr, pre_post_smoothing_iterations, args[3], args[2], d_u_h);
+    int pre_smoothing_iter = simpleSolver(H, W, d_divG, args[0], args+6, nullptr, args[1], args[4], args[5], d_u_h);
     cudaDeviceSynchronize();
 
     // Step 2: Restrict the residual r_h = b_h − A_h * u_h to the coarse grid by r_{2h} = R_{h}^{2h} * r_h
@@ -607,7 +607,7 @@ int multigridSolver(
     // Step 3: Solve A_{2h} * E_{2h} = r_{2h} (or come close to E_{2h} by 3 iterations from E = 0)
     float *d_E_2h;
     cudaMalloc(&d_E_2h, N2 * sizeof(float));
-    int cycle_smoothing_iter = simpleSolver(H2, W2, d_r_2h, args[4], args, nullptr, args[1], args[3], args[2], d_E_2h);
+    int cycle_smoothing_iter = simpleSolver(H2, W2, d_r_2h, args[0], args+6, nullptr, args[3], args[4], args[5], d_E_2h);
     cudaDeviceSynchronize();
 
     // Step 4: Interpolate E_{2h} back to E_h = I_{2h}^h * E_{2h}. Add E_h to u_h
@@ -624,7 +624,7 @@ int multigridSolver(
     add1DKernel<<<nblocksAdd1D, nthreadsAdd1D>>>(N, d_E_h, d_u_h);
     cudaDeviceSynchronize();
 
-    int post_smoothing_iter = simpleSolver(H, W, d_divG, args[4], args, d_u_h, pre_post_smoothing_iterations, args[3], args[2], d_I_log);
+    int post_smoothing_iter = simpleSolver(H, W, d_divG, args[0], args+6, d_u_h, args[1], args[4], args[5], d_I_log);
     cudaDeviceSynchronize();
 
     cudaFree(d_u_h);

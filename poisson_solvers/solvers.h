@@ -39,7 +39,7 @@ typedef void (*methodFunction)(const int, const int, const float*, const dim3, c
 int simpleSolver(
     const int H, const int W, 
     const float* d_divG, const int method, const float* args, const float* d_init_guess,
-    const int iterations, const float tolerance, const int checkFrequency,
+    const int iterations, const int checkFrequency, const float tolerance,
     float* d_I_log
 );
 
@@ -56,7 +56,7 @@ int simpleSolver(
 int multigridSolver(
     const int H, const int W, 
     const float* d_divG, const int method, const float* args,
-    const int pre_post_smoothing_iterations,
+    const int iterations, const int checkFrequency, const float tolerance,
     float* d_I_log);
 
 
