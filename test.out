@@ -1,0 +1,142 @@
+(gaussian_splatting) PS C:\Users\Runfeng Li\Desktop\hdrc\poisson_solvers> ./debug 0 0 1 10000 500 0.00001
+
+method: 0
+warmup: 0
+measure: 1
+
+iterations: 10000
+checkFrequency: 500
+tolerance: 1e-05
+
+omega: 1.45
+
+Function: f(x) = sin(pi*(x+y)/100.0):
+
+Time duration: 251.895 milliseconds
+
+Error: 0.021838
+Number of iteration until convergence: 7500
+
+(gaussian_splatting) PS C:\Users\Runfeng Li\Desktop\hdrc\poisson_solvers> ./debug 1 0 1 10000 500 0.00001
+
+method: 1
+warmup: 0
+measure: 1
+
+iterations: 10000
+checkFrequency: 500
+tolerance: 1e-05
+
+omega: 1.45
+
+Function: f(x) = sin(pi*(x+y)/100.0):
+
+Time duration: 249.402 milliseconds
+
+Error: 0.012041
+Number of iteration until convergence: 4500
+
+(gaussian_splatting) PS C:\Users\Runfeng Li\Desktop\hdrc\poisson_solvers> ./debug 2 0 1 10000 500 0.00001
+
+method: 2
+warmup: 0
+measure: 1
+
+iterations: 10000
+checkFrequency: 500
+tolerance: 1e-05
+
+omega: 1.45
+
+Function: f(x) = sin(pi*(x+y)/100.0):
+
+Time duration: 149.278 milliseconds
+
+Error: 0.00279895
+Number of iteration until convergence: 2500
+
+(gaussian_splatting) PS C:\Users\Runfeng Li\Desktop\hdrc\poisson_solvers> ./debug 3 0 1 10000 500 0.00001
+
+method: 3
+warmup: 0
+measure: 1
+
+iterations: 10000
+checkFrequency: 500
+tolerance: 1e-05
+
+omega: 1.45
+
+Function: f(x) = sin(pi*(x+y)/100.0):
+Time duration: 200.629 milliseconds
+
+Error: 0.0119935
+
+(gaussian_splatting) PS C:\Users\Runfeng Li\Desktop\hdrc\poisson_solvers> ./debug 4 0 1 10000 500 0.00001
+
+method: 4
+warmup: 0
+measure: 1
+
+iterations: 10000
+tolerance: 1e-05
+
+omega: 1.45
+
+Function: f(x) = sin(pi*(x+y)/100.0):
+L1 Estimated Laplacian Error 2.71713e-07
+
+Time duration: 118.337 milliseconds
+Error: 0.00272662
+Number of iteration until convergence: 2500
+
+(gaussian_splatting) PS C:\Users\Runfeng Li\Desktop\hdrc\poisson_solvers> cd ..
+(gaussian_splatting) PS C:\Users\Runfeng Li\Desktop\hdrc> python hdrc.py --save_att   
+Duration: 9993.665218353271 milliseconds
+2800 iterations until convergence.
+Done.
+(gaussian_splatting) PS C:\Users\Runfeng Li\Desktop\hdrc> python hdrc.py --save_att --cuda --method 0
+method: 0
+iterations: 10000
+checkFrequency: 30
+tolerance: 0.0001
+omega: 1.45
+Duration: 184.81874465942383 milliseconds
+2700 iterations until convergence.
+Done.
+(gaussian_splatting) PS C:\Users\Runfeng Li\Desktop\hdrc> python hdrc.py --save_att --cuda --method 1
+method: 1
+iterations: 10000
+checkFrequency: 30
+tolerance: 0.0001
+omega: 1.45
+Duration: 122.21980094909668 milliseconds
+330 iterations until convergence.
+Done.
+(gaussian_splatting) PS C:\Users\Runfeng Li\Desktop\hdrc> python hdrc.py --save_att --cuda --method 2
+method: 2
+iterations: 10000
+checkFrequency: 30
+tolerance: 0.0001
+omega: 1.45
+Duration: 116.14847183227539 milliseconds
+360 iterations until convergence.
+Done.
+(gaussian_splatting) PS C:\Users\Runfeng Li\Desktop\hdrc> python hdrc.py --save_att --cuda --method 3
+method: 3
+iterations: 10000
+checkFrequency: 30
+tolerance: 0.0001
+omega: 1.45
+Duration: 123.00276756286621 milliseconds
+330 iterations until convergence.
+Done.
+(gaussian_splatting) PS C:\Users\Runfeng Li\Desktop\hdrc> python hdrc.py --save_att --cuda --method 4
+method: 4
+iterations: 10000
+checkFrequency: 30
+tolerance: 0.0001
+omega: 1.45
+Duration: 109.54570770263672 milliseconds
+390 iterations until convergence.
+Done.
