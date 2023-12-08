@@ -23,7 +23,7 @@ cd poisson_solvers
 nvcc -O2 debug.cu debug_function2D.cu solvers.cu -o debug
 ```
 method:
-- 0 : Jacobi
+- 0: Jacobi
 - 1: Gauss-Seidel
 - 2: Gauss-Seidel + Naive Red-Black + SOR
 - 3: Gauss-Seidel + Pre-Reordered Red-Black
@@ -43,13 +43,13 @@ measure: 1 for testing. 20 for measuring.
 
 ### Multigrid Method (method > 4)
 ```
-.\debug {$method} {$warmup} {$measure} 100 5 0.00001 4 3 2 10000 500 0.00001
+.\debug {$method} {$warmup} {$measure} 10 2 0.00001 4 10 5 10000 100 0.00001
 ```
-
 
 ## Remarks
 1. The code is only tested on (H = 1200, W = 1600) and the two sample .hdr images.
 2. The code is tested on Windows 10, Python 3.7, CUDA Toolkits 11.8 with a NVIDIA 4060Ti GPU.
+3. Recovering the sample function (sin(pi/100*(x+y))) used for dubugging purpose may not benefit from using multigrid methods, because the grid elements have the same frequency. Multigrid methods would be beneficial if we have different frequencies of signals in the grid.
 
 ## References
 Fattal, R., Lischinski, D., & Werman, M. (2023). _Gradient domain high dynamic range compression._ In Seminal Graphics Papers: Pushing the Boundaries, Volume 2 (pp. 671-678).
