@@ -55,7 +55,7 @@ int main(int argc, char* argv[]) {
         int checkCoarsestFrequency = std::stoi(argv[11]);
         float CoarsestTolerance = std::stof(argv[12]);
         
-        float omega = (argc == 13) ? std::stof(argv[13]) : 1.45;
+        float omega = (argc == 14) ? std::stof(argv[13]) : 1.45;
 
         cudaMallocHost(&args, 7 * sizeof(float));
         args[0] = multigridSmoothingMethod;

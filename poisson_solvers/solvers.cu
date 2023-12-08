@@ -51,12 +51,12 @@ __global__ void jacobiKernel(const int H, const int W, const float* b, const flo
 
     int idx = j * W + i;
 
-    float up = (j > 0) ? current[idx - W] : current[idx];
+    float top = (j > 0) ? current[idx - W] : current[idx];
     float left = (i > 0) ? current[idx - 1] : current[idx];
     float right = (i < W - 1) ? current[idx + 1] : current[idx];
     float bottom = (j < H - 1) ? current[idx + W] : current[idx];
 
-    result[idx] = 0.25f * (up + left + right + bottom - b[idx]);
+    result[idx] = 0.25f * (top + left + right + bottom - b[idx]);
 }
 
 void jacobi(const int H, const int W, const float* d_divG, const dim3 nblocks, const dim3 nthreads, float* d_current, float* d_result, const float* args)
@@ -78,11 +78,11 @@ __global__ void redGaussSeidelKernel(const int H, const int W, const float* b, c
 
     if ((i + j) % 2 == 0)
     {
-        float up = (j > 0) ? current[idx - W] : current[idx];
+        float top = (j > 0) ? current[idx - W] : current[idx];
         float left = (i > 0) ? current[idx - 1] : current[idx];
         float right = (i < W - 1) ? current[idx + 1] : current[idx];
         float bottom = (j < H - 1) ? current[idx + W] : current[idx];
-        result[idx] = 0.25f * (up + left + right + bottom - b[idx]);
+        result[idx] = 0.25f * (top + left + right + bottom - b[idx]);
     }
 }
 
@@ -96,11 +96,11 @@ __global__ void blackGaussSeidelKernel(const int H, const int W, const float* b,
 
     if ((i + j) % 2 == 1)
     {
-        float up = (j > 0) ? result[idx - W] : result[idx];
+        float top = (j > 0) ? result[idx - W] : result[idx];
         float left = (i > 0) ? result[idx - 1] : result[idx];
         float right = (i < W - 1) ? result[idx + 1] : result[idx];
         float bottom = (j < H - 1) ? result[idx + W] : result[idx];
-        result[idx] = 0.25f * (up + left + right + bottom - b[idx]);
+        result[idx] = 0.25f * (top + left + right + bottom - b[idx]);
     }
 }
 
@@ -124,11 +124,11 @@ __global__ void redGaussSeidelSORKernel(const int H, const int W, const float* b
 
     if ((i + j) % 2 == 0)
     {
-        float up = (j > 0) ? current[idx - W] : current[idx];
+        float top = (j > 0) ? current[idx - W] : current[idx];
         float left = (i > 0) ? current[idx - 1] : current[idx];
         float right = (i < W - 1) ? current[idx + 1] : current[idx];
         float bottom = (j < H - 1) ? current[idx + W] : current[idx];
-        result[idx] = (1 - w_opt) * current[idx] + w_opt * 0.25f * (up + left + right + bottom - b[idx]);
+        result[idx] = (1 - w_opt) * current[idx] + w_opt * 0.25f * (top + left + right + bottom - b[idx]);
     }
 }
 
@@ -142,11 +142,11 @@ __global__ void blackGaussSeidelSORKernel(const int H, const int W, const float*
 
     if ((i + j) % 2 == 1)
     {
-        float up = (j > 0) ? result[idx - W] : result[idx];
+        float top = (j > 0) ? result[idx - W] : result[idx];
         float left = (i > 0) ? result[idx - 1] : result[idx];
         float right = (i < W - 1) ? result[idx + 1] : result[idx];
         float bottom = (j < H - 1) ? result[idx + W] : result[idx];
-        result[idx] = (1 - w_opt) * current[idx] + w_opt * 0.25f * (up + left + right + bottom - b[idx]);
+        result[idx] = (1 - w_opt) * current[idx] + w_opt * 0.25f * (top + left + right + bottom - b[idx]);
     }
 }
 
@@ -249,22 +249,22 @@ __global__ void redGaussSeidelKernel2(const int H, const int W, const float* b, 
         int orig_j = j * 2 + 1;
         if (orig_j >= H) return;
 
-        float up = black[idx];
+        float top = black[idx];
         float left = black[idx - 1];
         float right = (i < W - 1) ? black[idx + 1] : red[idx];
         float bottom = (orig_j < H - 1) ? black[idx + W] : red[idx];
-        red[idx] = 0.25f * (up + left + right + bottom - b[idx]);
+        red[idx] = 0.25f * (top + left + right + bottom - b[idx]);
     }
     else
     {
         int orig_j = j * 2;
         if (orig_j >= H) return;
 
-        float up = (orig_j > 0) ? black[idx - W] : red[idx];
+        float top = (orig_j > 0) ? black[idx - W] : red[idx];
         float left = (i > 0) ? black[idx - 1] : red[idx];
         float right = (i < W - 1) ? black[idx + 1] : red[idx];
         float bottom = (orig_j < H - 1) ? black[idx] : red[idx];
-        red[idx] = 0.25f * (up + left + right + bottom - b[idx]);
+        red[idx] = 0.25f * (top + left + right + bottom - b[idx]);
     }
 }
 
@@ -281,22 +281,22 @@ __global__ void blackGaussSeidelKernel2(const int H, const int W, const float* b
         int orig_j = j * 2;
         if (orig_j >= H) return;
 
-        float up = (orig_j > 0) ? red[idx - W] : black[idx];
+        float top = (orig_j > 0) ? red[idx - W] : black[idx];
         float left = red[idx - 1];
         float right = (i < W - 1) ? red[idx + 1] : black[idx];
         float bottom = (orig_j < H - 1) ? red[idx] : black[idx];
-        black[idx] = 0.25f * (up + left + right + bottom - b[idx + offset]);
+        black[idx] = 0.25f * (top + left + right + bottom - b[idx + offset]);
     }
     else
     {
         int orig_j = j * 2 + 1;
         if (orig_j >= H) return;
 
-        float up = red[idx];
+        float top = red[idx];
         float left = (i > 0) ? red[idx - 1] : black[idx];
         float right = (i < W - 1) ? red[idx + 1] : black[idx];
         float bottom = (orig_j < H - 1) ? red[idx + W] : black[idx];
-        black[idx] = 0.25f * (up + left + right + bottom - b[idx + offset]);
+        black[idx] = 0.25f * (top + left + right + bottom - b[idx + offset]);
     }
 }
 
@@ -322,22 +322,22 @@ __global__ void redGaussSeidelKernel2SOR(const int H, const int W, const float* 
         int orig_j = j * 2 + 1;
         if (orig_j >= H) return;
 
-        float up = black[idx];
+        float top = black[idx];
         float left = black[idx - 1];
         float right = (i < W - 1) ? black[idx + 1] : red[idx];
         float bottom = (orig_j < H - 1) ? black[idx + W] : red[idx];
-        red[idx] = (1 - w_opt) * red[idx] + w_opt * 0.25f * (up + left + right + bottom - b[idx]);
+        red[idx] = (1 - w_opt) * red[idx] + w_opt * 0.25f * (top + left + right + bottom - b[idx]);
     }
     else
     {
         int orig_j = j * 2;
         if (orig_j >= H) return;
 
-        float up = (orig_j > 0) ? black[idx - W] : red[idx];
+        float top = (orig_j > 0) ? black[idx - W] : red[idx];
         float left = (i > 0) ? black[idx - 1] : red[idx];
         float right = (i < W - 1) ? black[idx + 1] : red[idx];
         float bottom = (orig_j < H - 1) ? black[idx] : red[idx];
-        red[idx] = (1 - w_opt) * red[idx] + w_opt * 0.25f * (up + left + right + bottom - b[idx]);
+        red[idx] = (1 - w_opt) * red[idx] + w_opt * 0.25f * (top + left + right + bottom - b[idx]);
     }
 }
 
@@ -354,22 +354,22 @@ __global__ void blackGaussSeidelKernel2SOR(const int H, const int W, const float
         int orig_j = j * 2;
         if (orig_j >= H) return;
 
-        float up = (orig_j > 0) ? red[idx - W] : black[idx];
+        float top = (orig_j > 0) ? red[idx - W] : black[idx];
         float left = red[idx - 1];
         float right = (i < W - 1) ? red[idx + 1] : black[idx];
         float bottom = (orig_j < H - 1) ? red[idx] : black[idx];
-        black[idx] = (1 - w_opt) * black[idx] + w_opt * 0.25f * (up + left + right + bottom - b[idx + offset]);
+        black[idx] = (1 - w_opt) * black[idx] + w_opt * 0.25f * (top + left + right + bottom - b[idx + offset]);
     }
     else
     {
         int orig_j = j * 2 + 1;
         if (orig_j >= H) return;
 
-        float up = red[idx];
+        float top = red[idx];
         float left = (i > 0) ? red[idx - 1] : black[idx];
         float right = (i < W - 1) ? red[idx + 1] : black[idx];
         float bottom = (orig_j < H - 1) ? red[idx + W] : black[idx];
-        black[idx] = (1 - w_opt) * black[idx] + w_opt * 0.25f * (up + left + right + bottom - b[idx + offset]);
+        black[idx] = (1 - w_opt) * black[idx] + w_opt * 0.25f * (top + left + right + bottom - b[idx + offset]);
     }
 }
 
@@ -521,56 +521,84 @@ __global__ void computeResidualKernel(const int H, const int W, const float* b_h
 
     int idx = j * W + i;
 
-    float up = (j > 0) ? u_h[idx - W] : u_h[idx];
+    float top = (j > 0) ? u_h[idx - W] : u_h[idx];
     float left = (i > 0) ? u_h[idx - 1] : u_h[idx];
     float right = (i < W - 1) ? u_h[idx + 1] : u_h[idx];
     float bottom = (j < H - 1) ? u_h[idx + W] : u_h[idx];
 
-    r_h[idx] = b_h[idx] - (up + left + right + bottom - 4 * u_h[idx]);
+    r_h[idx] = b_h[idx] - (top + left + right + bottom - 4 * u_h[idx]);
 }
 
-__global__ void restrict1DKernel(const int N, const int N2, const float* r_h, float* r_2h) {
-    int tid = blockIdx.x * blockDim.x + threadIdx.x;
+__global__ void restrict2DKernel(const int H, const int W, const int H2, const int W2, const float* r_h, float* r_2h) {
+    int i2 = blockIdx.x * blockDim.x + threadIdx.x;
+    int j2 = blockIdx.y * blockDim.y + threadIdx.y;
 
-    if (tid >= N2) return;
+    if (i2 >= W2 || j2 >= H2) return;
 
-    int idx = tid * 2 + 1;
+    int i = i2 * 2;
+    int j = j2 * 2;
 
-    float up = r_h[idx-1];
-    float middle = r_h[idx];
-    float bottom = (idx < N - 1) ? r_h[idx+1] : r_h[idx];
+    int idx = j * W + i;
+    int idx2 = j2 * W2 + i2;
 
-    r_2h[tid] = 0.25 * (up + middle * 2 + bottom);
+    float top = (j > 0) ? r_h[idx - W] : r_h[idx];
+    float left = (i > 0) ? r_h[idx - 1] : r_h[idx];
+    float right = (i < W - 1) ? r_h[idx + 1] : r_h[idx];
+    float bottom = (j < H - 1) ? r_h[idx + W] : r_h[idx];
+
+    float topLeft = (j > 0) ? ((i > 0) ? r_h[idx-W-1] : r_h[idx-W]) : ((i > 0) ? r_h[idx-1] : r_h[idx]);
+    float topRight = (j > 0) ? ((i < W - 1) ? r_h[idx-W+1] : r_h[idx-W]) : ((i < W - 1) ? r_h[idx+1] : r_h[idx]);
+    float bottomLeft = (j < H - 1) ? ((i > 0) ? r_h[idx+W-1] : r_h[idx+W]) : ((i > 0) ? r_h[idx-1] : r_h[idx]);
+    float bottomRight = (j < H - 1) ? ((i < W - 1) ? r_h[idx+W+1] : r_h[idx+W]) : ((i < W - 1) ? r_h[idx+1] : r_h[idx]);
+
+    r_2h[idx2] = 0.0625 * (topLeft + topRight + bottomLeft + bottomRight) + 0.125 * (top + bottom + left + right) + 0.25 * r_h[idx];
 }
 
-__global__ void interpolate1DKernel(const int N, const float* E_2h, float* E_h) {
-    int tid = blockIdx.x * blockDim.x + threadIdx.x;
-    int idx = tid / 2;
+__global__ void interpolate2DKernel(const int H, const int W, const int W2, const float* E_2h, float* E_h) {
+    int i = blockIdx.x * blockDim.x + threadIdx.x;
+    int j = blockIdx.y * blockDim.y + threadIdx.y;
 
-    if (tid >= N) return;
+    if (i >= W || j >= H) return;
 
-    float left, right;
+    int idx = j * W + i;
 
-    if (tid % 2 == 0) 
+    int i2 = i / 2;
+    int j2 = j / 2;
+    int idx2 = j2 * W2 + i2;
+    
+    if (j % 2 == 0)
     {
-        left = (idx > 0) ? E_2h[idx-1] : 0;
-        right = E_2h[idx];
+        if (i % 2 == 0)
+        {
+            E_h[idx] = E_2h[idx2];
+        }
+        else
+        {
+            E_h[idx] = 0.5 * (E_2h[idx2] + E_2h[idx2 + 1]);
+        }
     }
     else
     {
-        left = E_2h[idx];
-        right = E_2h[idx];
+        if (i % 2 == 0)
+        {
+            E_h[idx] = 0.5 * (E_2h[idx2] + E_2h[idx2 + W2]);
+        }
+        else
+        {
+            E_h[idx] = 0.5 * (E_2h[idx2] + E_2h[idx2 + 1] + E_2h[idx2 + W2] + E_2h[idx2 + W2 + 1]);
+        }
     }
-
-    E_h[tid] = 0.5 * (left + right);
 }
 
-__global__ void add1DKernel(const int N, const float* E_h, float* u_h) {
-    int tid = blockIdx.x * blockDim.x + threadIdx.x;
+__global__ void add2DKernel(const int H, const int W, const float* E_h, float* u_h) {
+    int i = blockIdx.x * blockDim.x + threadIdx.x;
+    int j = blockIdx.y * blockDim.y + threadIdx.y;
 
-    if (tid >= N) return;
+    if (i >= W || j >= H) return;
 
-    u_h[tid] += E_h[tid];
+    int idx = j * W + i;
+
+    u_h[idx] += E_h[idx];
 }
 
 
@@ -580,8 +608,11 @@ int multigridSolver(
     const int iterations, const int checkFrequency, const float tolerance,
     float* d_I_log)
 {
-    const int N = H * W, N2 = H * W / 2;
-    const int H2 = H / 2, W2 = W / 2;
+    cudaError_t launchErr;
+
+    const int N = H * W;
+    const int H2 = std::ceil(H / 2), W2 = std::ceil(W / 2);
+    const int N2 = H2 * W2;
 
     // Step 1: Iterate on A_h * u = b_h to reach u_h (say 3 Jacobi or Gauss-Seidel steps)
     float *d_u_h;
@@ -599,9 +630,9 @@ int multigridSolver(
 
     float *d_r_2h;
     cudaMalloc(&d_r_2h, N2 * sizeof(float));
-    dim3 nthreadsRestrict1D(256, 1, 1);
-    dim3 nblocksRestrict1D((N2 + nthreadsRestrict1D.x - 1) / nthreadsRestrict1D.x, 1, 1);
-    restrict1DKernel<<<nblocksRestrict1D, nthreadsRestrict1D>>>(N, N2, d_r_h, d_r_2h);
+    dim3 nthreadsRestrict2D(16, 16, 1);
+    dim3 nblocksRestrict2D((W2 + nthreadsRestrict2D.x - 1) / nthreadsRestrict2D.x, (H2 + nthreadsRestrict2D.y - 1) / nthreadsRestrict2D.y, 1);
+    restrict2DKernel<<<nblocksRestrict2D, nthreadsRestrict2D>>>(H, W, H2, W2, d_r_h, d_r_2h);
     cudaDeviceSynchronize();
 
     // Step 3: Solve A_{2h} * E_{2h} = r_{2h} (or come close to E_{2h} by 3 iterations from E = 0)
@@ -613,17 +644,17 @@ int multigridSolver(
     // Step 4: Interpolate E_{2h} back to E_h = I_{2h}^h * E_{2h}. Add E_h to u_h
     float *d_E_h;
     cudaMalloc(&d_E_h, N * sizeof(float));
-    dim3 nthreadsInterpolate1D(256, 1, 1);
-    dim3 nblocksInterpolate1D((N + nthreadsInterpolate1D.x - 1) / nthreadsInterpolate1D.x, 1, 1);
-    interpolate1DKernel<<<nblocksInterpolate1D, nthreadsInterpolate1D>>>(N, d_E_2h, d_E_h);
+    dim3 nthreadsInterpolate2D(16, 16, 1);
+    dim3 nblocksInterpolate2D((W + nthreadsInterpolate2D.x - 1) / nthreadsInterpolate2D.x, (H + nthreadsInterpolate2D.y - 1) / nthreadsInterpolate2D.y, 1);
+    interpolate2DKernel<<<nblocksInterpolate2D, nthreadsInterpolate2D>>>(H, W, W2, d_E_2h, d_E_h);
+    cudaDeviceSynchronize();
+
+    dim3 nthreadsAdd2D(16, 16, 1);
+    dim3 nblocksAdd2D((W + nthreadsAdd2D.x - 1) / nthreadsAdd2D.x, (H + nthreadsAdd2D.y - 1) / nthreadsAdd2D.y, 1);
+    add2DKernel<<<nblocksAdd2D, nthreadsAdd2D>>>(H, W, d_E_h, d_u_h);
     cudaDeviceSynchronize();
 
     // Step 5: Iterate 3 more times on A_h * u = b_h starting from the improved u_h + E_h.
-    dim3 nthreadsAdd1D(256, 1, 1);
-    dim3 nblocksAdd1D((N + nthreadsAdd1D.x - 1) / nthreadsAdd1D.x, 1, 1);
-    add1DKernel<<<nblocksAdd1D, nthreadsAdd1D>>>(N, d_E_h, d_u_h);
-    cudaDeviceSynchronize();
-
     int post_smoothing_iter = simpleSolver(H, W, d_divG, args[0], args+6, d_u_h, args[1], args[4], args[5], d_I_log);
     cudaDeviceSynchronize();
 
