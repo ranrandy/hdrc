@@ -47,7 +47,7 @@ int simpleSolver(
 
 
 /*
-    Integration of all multigrid poisson solvers with "Gauss-Seidel + Red-Black Pre-Reordering + SOR".
+    Integration of all multigrid poisson solvers with simpleSolver's on coarser grids.
 
     5. V-Cycle
 
@@ -60,10 +60,5 @@ int multigridSolver(
     const float* d_divG, const int method, const float* args,
     const int iterations, const int checkFrequency, const float tolerance,
     float* d_I_log);
-
-// int vCycleSolver(
-//     const int H, const int W, 
-//     const float* d_divG, const int method, const float* args,
-//     float* d_I_log);
 
 #endif

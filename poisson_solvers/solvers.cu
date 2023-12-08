@@ -610,26 +610,25 @@ int vCycleSolver(
     const int H2 = std::ceil(H / 2.0), W2 = std::ceil(W / 2.0);
     const int N2 = H2 * W2;
 
+    dim3 nthreads_h(16, 16, 1);
+    dim3 nblocks_h((W + nthreads_h.x - 1) / nthreads_h.x, (H + nthreads_h.y - 1) / nthreads_h.y, 1);
+
+    dim3 nthreads_2h(16, 16, 1);
+    dim3 nblocks_2h((W2 + nthreads_2h.x - 1) / nthreads_2h.x, (H2 + nthreads_2h.y - 1) / nthreads_2h.y, 1);
+    
     // Step 1: Iterate on A_h * u = b_h to reach u_h (say 3 Jacobi or Gauss-Seidel steps)
-    float *d_u_h;
-    cudaMalloc(&d_u_h, N * sizeof(float));
-    if (d_I_log != nullptr) cudaMemcpy(d_u_h, d_I_log, N * sizeof(float), cudaMemcpyDeviceToDevice);
-    int pre_smoothing_iter = simpleSolver(H, W, d_divG, args[0], args+6, args[1], args[4], args[5], d_u_h);
+    int pre_smoothing_iter = simpleSolver(H, W, d_divG, args[0], args+6, args[1], args[4], args[5], d_I_log);
     cudaDeviceSynchronize();
 
     // Step 2: Restrict the residual r_h = b_h − A_h * u_h to the coarse grid by r_{2h} = R_{h}^{2h} * r_h
     float *d_r_h;
     cudaMalloc(&d_r_h, N * sizeof(float));
-    dim3 nthreadsResidual(16, 16, 1);
-    dim3 nblocksResidual((W + nthreadsResidual.x - 1) / nthreadsResidual.x, (H + nthreadsResidual.y - 1) / nthreadsResidual.y, 1);
-    computeResidualKernel<<<nblocksResidual, nthreadsResidual>>>(H, W, d_divG, d_u_h, d_r_h);
+    computeResidualKernel<<<nblocks_h, nthreads_h>>>(H, W, d_divG, d_I_log, d_r_h);
     cudaDeviceSynchronize();
 
     float *d_r_2h;
     cudaMalloc(&d_r_2h, N2 * sizeof(float));
-    dim3 nthreadsRestrict2D(16, 16, 1);
-    dim3 nblocksRestrict2D((W2 + nthreadsRestrict2D.x - 1) / nthreadsRestrict2D.x, (H2 + nthreadsRestrict2D.y - 1) / nthreadsRestrict2D.y, 1);
-    restrict2DKernel<<<nblocksRestrict2D, nthreadsRestrict2D>>>(H, W, H2, W2, d_r_h, d_r_2h);
+    restrict2DKernel<<<nblocks_2h, nthreads_2h>>>(H, W, H2, W2, d_r_h, d_r_2h);
     cudaDeviceSynchronize();
 
     // Step 3: Solve A_{2h} * E_{2h} = r_{2h} (or come close to E_{2h} by 3 iterations from E = 0)
@@ -646,23 +645,16 @@ int vCycleSolver(
     // Step 4: Interpolate E_{2h} back to E_h = I_{2h}^h * E_{2h}. Add E_h to u_h
     float *d_E_h;
     cudaMalloc(&d_E_h, N * sizeof(float));
-    dim3 nthreadsInterpolate2D(16, 16, 1);
-    dim3 nblocksInterpolate2D((W + nthreadsInterpolate2D.x - 1) / nthreadsInterpolate2D.x, (H + nthreadsInterpolate2D.y - 1) / nthreadsInterpolate2D.y, 1);
-    interpolate2DKernel<<<nblocksInterpolate2D, nthreadsInterpolate2D>>>(H, W, W2, d_E_2h, d_E_h);
+    interpolate2DKernel<<<nblocks_h, nthreads_h>>>(H, W, W2, d_E_2h, d_E_h);
     cudaDeviceSynchronize();
 
-    dim3 nthreadsAdd2D(16, 16, 1);
-    dim3 nblocksAdd2D((W + nthreadsAdd2D.x - 1) / nthreadsAdd2D.x, (H + nthreadsAdd2D.y - 1) / nthreadsAdd2D.y, 1);
-    add2DKernel<<<nblocksAdd2D, nthreadsAdd2D>>>(H, W, d_E_h, d_u_h);
+    add2DKernel<<<nblocks_h, nthreads_h>>>(H, W, d_E_h, d_I_log);
     cudaDeviceSynchronize();
 
     // Step 5: Iterate 3 more times on A_h * u = b_h starting from the improved u_h + E_h.
-    int post_smoothing_iter = simpleSolver(H, W, d_divG, args[0], args+6, args[1], args[4], args[5], d_u_h);
+    int post_smoothing_iter = simpleSolver(H, W, d_divG, args[0], args+6, args[1], args[4], args[5], d_I_log);
     cudaDeviceSynchronize();
 
-    cudaMemcpy(d_I_log, d_u_h, N * sizeof(float), cudaMemcpyDeviceToDevice);
-
-    cudaFree(d_u_h);
     cudaFree(d_r_h);
     cudaFree(d_r_2h);
     cudaFree(d_E_2h);
@@ -676,7 +668,7 @@ int wCycleSolver(
     const float* d_divG, const float* args,
     float* d_I_log)
 {
-
+    return -1;
 }
 
 int fCycleSolver(    
@@ -684,7 +676,7 @@ int fCycleSolver(
     const float* d_divG, const float* args,
     float* d_I_log)
 {
-
+    return -1;
 }
 
 
@@ -721,9 +713,6 @@ int multigridSolver(
     cudaMemset(d_prev, 0.0, N * sizeof(float));
     cudaMalloc(&d_result, N * sizeof(float));
     cudaMemset(d_result, 0.0, N * sizeof(float));
-    
-    dim3 nthreadsAdd2D(16, 16, 1);
-    dim3 nblocksAdd2D((W + nthreadsAdd2D.x - 1) / nthreadsAdd2D.x, (H + nthreadsAdd2D.y - 1) / nthreadsAdd2D.y, 1);
     
     int total_iter_until_convergence = 0;
     for (int i = 0; i < iterations; ) 

@@ -3,7 +3,7 @@ Implementation of Gradient Domain HDR Compression in CUDA.
 
 Gamma vs Gradient Domain Compression
 
-<img src="output/bigFogMap_ldr_gamma.png" width="400"/>  <img src="output/bigFogMap_ldr_norm.png" width="400"/>
+<img src="output/5_bigFogMap_ldr_gamma.png" width="400"/>  <img src="output/5_bigFogMap_ldr_norm.png" width="400"/>
 
 Attenuation map of the Belgium House scene.
 
@@ -50,6 +50,7 @@ measure: 1 for testing. 20 for measuring.
 1. The code is only tested on (H = 1200, W = 1600) and the two sample .hdr images.
 2. The code is tested on Windows 10, Python 3.7, CUDA Toolkits 11.8 with a NVIDIA 4060Ti GPU.
 3. Recovering the sample function (sin(pi/100*(x+y))) used for dubugging purpose may not benefit from using multigrid methods, because the grid elements have the same frequency. Multigrid methods would be beneficial if we have different frequencies of signals in the grid.
+4. Because sending the divG to the device (GPU) would be very time consuming, about 100 milliseconds, but solving the poisson equation only needs <10 milliseconds, and if we want to apply this code as part of a real-time tonemapper which tonemaps RAW HDR images to LDR images in real-time on GPU, the "divG" in that case would already be on GPU --> We ignore the large amount of time spent on sending divG to GPU in the Python part. Instead, we measure the time spent on solving the poisson equation in the pycall.cu file.
 
 ## References
 Fattal, R., Lischinski, D., & Werman, M. (2023). _Gradient domain high dynamic range compression._ In Seminal Graphics Papers: Pushing the Boundaries, Volume 2 (pp. 671-678).
