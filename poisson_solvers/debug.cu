@@ -101,6 +101,7 @@ int main(int argc, char* argv[]) {
 
     float *d_I_log;
     cudaMalloc(&d_I_log, H * W * sizeof(float));
+    cudaMemset(d_I_log, 0.0, H * W * sizeof(float));
 
     float *h_I_log;
     cudaMallocHost(&h_I_log, H * W * sizeof(float));
@@ -112,7 +113,7 @@ int main(int argc, char* argv[]) {
     {
         if (method <= 4) iter_converge = simpleSolver(
             H, W, d_divG, 
-            method, args, nullptr, 
+            method, args, 
             iterations, checkFrequency, tolerance, 
             d_I_log);
         else iter_converge = multigridSolver(
@@ -140,7 +141,7 @@ int main(int argc, char* argv[]) {
     {
         if (method <= 4) iter_converge = simpleSolver(
             H, W, d_divG, 
-            method, args, nullptr, 
+            method, args, 
             iterations, checkFrequency, tolerance, 
             d_I_log);
         else iter_converge = multigridSolver(

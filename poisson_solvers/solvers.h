@@ -14,6 +14,7 @@
 
 
 typedef void (*methodFunction)(const int, const int, const float*, const dim3, const dim3, float*, float*, const float*);
+typedef int (*mgMethodFunction)(const int, const int, const float*, const float*, float*);
 
 /*
     Integration of all the single-grid poisson solvers:
@@ -39,7 +40,7 @@ typedef void (*methodFunction)(const int, const int, const float*, const dim3, c
 */
 int simpleSolver(
     const int H, const int W, 
-    const float* d_divG, const int method, const float* args, const float* d_init_guess,
+    const float* d_divG, const int method, const float* args,
     const int iterations, const int checkFrequency, const float tolerance,
     float* d_I_log
 );
@@ -60,5 +61,9 @@ int multigridSolver(
     const int iterations, const int checkFrequency, const float tolerance,
     float* d_I_log);
 
+// int vCycleSolver(
+//     const int H, const int W, 
+//     const float* d_divG, const int method, const float* args,
+//     float* d_I_log);
 
 #endif

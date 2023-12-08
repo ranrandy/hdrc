@@ -382,7 +382,7 @@ void gaussSeidelRedBlack2SOR(const int H, const int W, const float* d_divG, cons
 
 int simpleSolver(
     const int H, const int W, 
-    const float* d_divG, const int method, const float* args, const float* d_init_guess, 
+    const float* d_divG, const int method, const float* args, 
     const int iterations, const int checkFrequency, const float tolerance,
     float* d_I_log)
 {
@@ -422,7 +422,7 @@ int simpleSolver(
         float *d_current, *d_result;
         cudaMalloc(&d_current, N * sizeof(float));
         cudaMemset(d_current, 0.0, N * sizeof(float));
-        if (d_init_guess != nullptr) cudaMemcpy(d_current, d_init_guess, N * sizeof(float), cudaMemcpyDeviceToDevice);
+        if (d_I_log != nullptr) cudaMemcpy(d_current, d_I_log, N * sizeof(float), cudaMemcpyDeviceToDevice);
 
         cudaMalloc(&d_result, N * sizeof(float));
         cudaMemset(d_result, 0.0, N * sizeof(float));
@@ -467,7 +467,7 @@ int simpleSolver(
         cudaMemset(red, 0.0, N2 * sizeof(float));
         cudaMalloc(&black, N2 * sizeof(float));
         cudaMemset(black, 0.0, N2 * sizeof(float));
-        if (d_init_guess != nullptr) fillInRedBlackInitGaussSeidel2Kernel<<<nblocksFillIn, nthreadsFillIn>>>(H, W, d_init_guess, red, black);
+        if (d_I_log != nullptr) fillInRedBlackInitGaussSeidel2Kernel<<<nblocksFillIn, nthreadsFillIn>>>(H, W, d_I_log, red, black);
 
         float *prev_red;
         cudaMalloc(&prev_red, N2 * sizeof(float));
@@ -601,23 +601,20 @@ __global__ void add2DKernel(const int H, const int W, const float* E_h, float* u
     u_h[idx] += E_h[idx];
 }
 
-
-int multigridSolver(    
+int vCycleSolver(    
     const int H, const int W, 
-    const float* d_divG, const int method, const float* args,
-    const int iterations, const int checkFrequency, const float tolerance,
+    const float* d_divG, const float* args,
     float* d_I_log)
 {
-    cudaError_t launchErr;
-
     const int N = H * W;
-    const int H2 = std::ceil(H / 2), W2 = std::ceil(W / 2);
+    const int H2 = std::ceil(H / 2.0), W2 = std::ceil(W / 2.0);
     const int N2 = H2 * W2;
 
     // Step 1: Iterate on A_h * u = b_h to reach u_h (say 3 Jacobi or Gauss-Seidel steps)
     float *d_u_h;
     cudaMalloc(&d_u_h, N * sizeof(float));
-    int pre_smoothing_iter = simpleSolver(H, W, d_divG, args[0], args+6, nullptr, args[1], args[4], args[5], d_u_h);
+    if (d_I_log != nullptr) cudaMemcpy(d_u_h, d_I_log, N * sizeof(float), cudaMemcpyDeviceToDevice);
+    int pre_smoothing_iter = simpleSolver(H, W, d_divG, args[0], args+6, args[1], args[4], args[5], d_u_h);
     cudaDeviceSynchronize();
 
     // Step 2: Restrict the residual r_h = b_h − A_h * u_h to the coarse grid by r_{2h} = R_{h}^{2h} * r_h
@@ -638,7 +635,12 @@ int multigridSolver(
     // Step 3: Solve A_{2h} * E_{2h} = r_{2h} (or come close to E_{2h} by 3 iterations from E = 0)
     float *d_E_2h;
     cudaMalloc(&d_E_2h, N2 * sizeof(float));
-    int cycle_smoothing_iter = simpleSolver(H2, W2, d_r_2h, args[0], args+6, nullptr, args[3], args[4], args[5], d_E_2h);
+    cudaMemset(d_E_2h, 0.0, N2 * sizeof(float));
+    int cycle_smoothing_iter;
+    if (std::min(H2, W2) <= args[2])
+        cycle_smoothing_iter = simpleSolver(H2, W2, d_r_2h, args[0], args+6, args[3], args[4], args[5], d_E_2h);
+    else
+        cycle_smoothing_iter = vCycleSolver(H2, W2, d_r_2h, args, d_E_2h);
     cudaDeviceSynchronize();
 
     // Step 4: Interpolate E_{2h} back to E_h = I_{2h}^h * E_{2h}. Add E_h to u_h
@@ -655,8 +657,10 @@ int multigridSolver(
     cudaDeviceSynchronize();
 
     // Step 5: Iterate 3 more times on A_h * u = b_h starting from the improved u_h + E_h.
-    int post_smoothing_iter = simpleSolver(H, W, d_divG, args[0], args+6, d_u_h, args[1], args[4], args[5], d_I_log);
+    int post_smoothing_iter = simpleSolver(H, W, d_divG, args[0], args+6, args[1], args[4], args[5], d_u_h);
     cudaDeviceSynchronize();
+
+    cudaMemcpy(d_I_log, d_u_h, N * sizeof(float), cudaMemcpyDeviceToDevice);
 
     cudaFree(d_u_h);
     cudaFree(d_r_h);
@@ -665,4 +669,84 @@ int multigridSolver(
     cudaFree(d_E_h);
 
     return pre_smoothing_iter + post_smoothing_iter + cycle_smoothing_iter;
+}
+
+int wCycleSolver(    
+    const int H, const int W, 
+    const float* d_divG, const float* args,
+    float* d_I_log)
+{
+
+}
+
+int fCycleSolver(    
+    const int H, const int W, 
+    const float* d_divG, const float* args,
+    float* d_I_log)
+{
+
+}
+
+
+int multigridSolver(
+    const int H, const int W, 
+    const float* d_divG, const int method, const float* args,
+    const int iterations, const int checkFrequency, const float tolerance,
+    float* d_I_log)
+{
+    const int N = H * W;
+
+    mgMethodFunction mgMethodKernel;
+    switch (method) {
+        case 5:
+            mgMethodKernel = vCycleSolver;
+            break;
+        case 6:
+            mgMethodKernel = wCycleSolver;
+            break;
+        case 7:
+            mgMethodKernel = fCycleSolver;
+            break;
+        default:
+            return -1;
+    }
+
+    int nblocksError = (N + MAX_THREADS - 1) / MAX_THREADS;
+    float h_error;
+    float *d_error;
+    cudaMalloc(&d_error, sizeof(float));
+
+    float *d_prev, *d_result;
+    cudaMalloc(&d_prev, N * sizeof(float));
+    cudaMemset(d_prev, 0.0, N * sizeof(float));
+    cudaMalloc(&d_result, N * sizeof(float));
+    cudaMemset(d_result, 0.0, N * sizeof(float));
+    
+    dim3 nthreadsAdd2D(16, 16, 1);
+    dim3 nblocksAdd2D((W + nthreadsAdd2D.x - 1) / nthreadsAdd2D.x, (H + nthreadsAdd2D.y - 1) / nthreadsAdd2D.y, 1);
+    
+    int total_iter_until_convergence = 0;
+    for (int i = 0; i < iterations; ) 
+    {
+        if ((i+1) % checkFrequency == 0) cudaMemcpy(d_prev, d_result, N * sizeof(float), cudaMemcpyDeviceToDevice);
+        total_iter_until_convergence += mgMethodKernel(H, W, d_divG, args, d_result);
+        cudaDeviceSynchronize(); 
+        ++i;
+
+        if (i % checkFrequency == 0)
+        {   
+            cudaMemset(d_error, 0.0, sizeof(float));
+            atomicAddBlockErrorsKernel<<<nblocksError, MAX_THREADS>>>(d_result, d_prev, d_error, N);
+            cudaDeviceSynchronize();
+            cudaMemcpy(&h_error, d_error, sizeof(float), cudaMemcpyDeviceToHost);
+            h_error /= N;
+
+            if (h_error < tolerance) break;
+        }
+    }
+
+    cudaMemcpy(d_I_log, d_result, N * sizeof(float), cudaMemcpyDeviceToDevice);
+    cudaFree(d_result);
+    cudaFree(d_error);
+    return total_iter_until_convergence;
 }

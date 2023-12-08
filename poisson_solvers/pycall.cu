@@ -11,6 +11,7 @@ std::tuple<torch::Tensor, int> solve(
 
     float *d_I_log;
     cudaMalloc(&d_I_log, H * W * sizeof(float));
+    cudaMemset(d_I_log, 0.0, H * W * sizeof(float));
 
     float *h_I_log;
     cudaMallocHost(&h_I_log, H * W * sizeof(float));
@@ -34,7 +35,7 @@ std::tuple<torch::Tensor, int> solve(
 
         iter_converge = simpleSolver(
             H, W, d_div_G.contiguous().data<float>(),
-            method, arguments, nullptr,
+            method, arguments,
             iterations, checkFrequency, tolerance,
             d_I_log);
     }
@@ -62,8 +63,8 @@ std::tuple<torch::Tensor, int> solve(
         std::cout << "omega: " << arguments[6] << std::endl;
 
         iter_converge = multigridSolver(
-            H, W, d_div_G.contiguous().data<float>(),
-            method, arguments,
+            H, W, 
+            d_div_G.contiguous().data<float>(), method, arguments,
             iterations, checkFrequency, tolerance,
             d_I_log);
     }
