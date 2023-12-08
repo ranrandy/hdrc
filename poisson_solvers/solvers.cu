@@ -668,7 +668,7 @@ int wCycleSolver(
     const float* d_divG, const float* args,
     float* d_I_log)
 {
-const int N = H * W;
+    const int N = H * W;
     const int H2 = std::ceil(H / 2.0), W2 = std::ceil(W / 2.0);
     const int N2 = H2 * W2;
 
@@ -757,7 +757,88 @@ int fCycleSolver(
     const float* d_divG, const float* args,
     float* d_I_log)
 {
-    return -1;
+    const int N = H * W;
+    const int H2 = std::ceil(H / 2.0), W2 = std::ceil(W / 2.0);
+    const int N2 = H2 * W2;
+
+    dim3 nthreads_h(16, 16, 1);
+    dim3 nblocks_h((W + nthreads_h.x - 1) / nthreads_h.x, (H + nthreads_h.y - 1) / nthreads_h.y, 1);
+
+    dim3 nthreads_2h(16, 16, 1);
+    dim3 nblocks_2h((W2 + nthreads_2h.x - 1) / nthreads_2h.x, (H2 + nthreads_2h.y - 1) / nthreads_2h.y, 1);
+    
+    // Step 1: Iterate on A_h * u = b_h to reach u_h (say 3 Jacobi or Gauss-Seidel steps)
+    int pre_smoothing_iter = simpleSolver(H, W, d_divG, args[0], args+6, args[1], args[4], args[5], d_I_log);
+    cudaDeviceSynchronize();
+
+    // Step 2: Restrict the residual r_h = b_h − A_h * u_h to the coarse grid by r_{2h} = R_{h}^{2h} * r_h
+    float *d_r_h;
+    cudaMalloc(&d_r_h, N * sizeof(float));
+    computeResidualKernel<<<nblocks_h, nthreads_h>>>(H, W, d_divG, d_I_log, d_r_h);
+    cudaDeviceSynchronize();
+
+    float *d_r_2h;
+    cudaMalloc(&d_r_2h, N2 * sizeof(float));
+    restrict2DKernel<<<nblocks_2h, nthreads_2h>>>(H, W, H2, W2, d_r_h, d_r_2h);
+    cudaDeviceSynchronize();
+
+    // Step 3: Solve A_{2h} * E_{2h} = r_{2h} (or come close to E_{2h} by 3 iterations from E = 0)
+    float *d_E_2h;
+    cudaMalloc(&d_E_2h, N2 * sizeof(float));
+    cudaMemset(d_E_2h, 0.0, N2 * sizeof(float));
+    int cycle_smoothing_iter1;
+    if (std::min(H2, W2) <= args[2])
+        cycle_smoothing_iter1 = simpleSolver(H2, W2, d_r_2h, args[0], args+6, args[3], args[4], args[5], d_E_2h);
+    else
+        cycle_smoothing_iter1 = fCycleSolver(H2, W2, d_r_2h, args, d_E_2h);
+    cudaDeviceSynchronize();
+
+    // Step 4: Interpolate E_{2h} back to E_h = I_{2h}^h * E_{2h}. Add E_h to u_h
+    float *d_E_h;
+    cudaMalloc(&d_E_h, N * sizeof(float));
+    interpolate2DKernel<<<nblocks_h, nthreads_h>>>(H, W, W2, d_E_2h, d_E_h);
+    cudaDeviceSynchronize();
+
+    add2DKernel<<<nblocks_h, nthreads_h>>>(H, W, d_E_h, d_I_log);
+    cudaDeviceSynchronize();
+
+    // Step 5: Iterate 3 more times on A_h * u = b_h starting from the improved u_h + E_h.
+    int post_smoothing_iter1 = simpleSolver(H, W, d_divG, args[0], args+6, args[1], args[4], args[5], d_I_log);
+    cudaDeviceSynchronize();
+
+    // Repeat from Step 2
+    computeResidualKernel<<<nblocks_h, nthreads_h>>>(H, W, d_divG, d_I_log, d_r_h);
+    cudaDeviceSynchronize();
+
+    restrict2DKernel<<<nblocks_2h, nthreads_2h>>>(H, W, H2, W2, d_r_h, d_r_2h);
+    cudaDeviceSynchronize();
+
+    // Step 3
+    cudaMemset(d_E_2h, 0.0, N2 * sizeof(float));
+    int cycle_smoothing_iter2;
+    if (std::min(H2, W2) <= args[2])
+        cycle_smoothing_iter2 = simpleSolver(H2, W2, d_r_2h, args[0], args+6, args[3], args[4], args[5], d_E_2h);
+    else
+        cycle_smoothing_iter2 = vCycleSolver(H2, W2, d_r_2h, args, d_E_2h);
+    cudaDeviceSynchronize();
+
+    // Step 4
+    interpolate2DKernel<<<nblocks_h, nthreads_h>>>(H, W, W2, d_E_2h, d_E_h);
+    cudaDeviceSynchronize();
+
+    add2DKernel<<<nblocks_h, nthreads_h>>>(H, W, d_E_h, d_I_log);
+    cudaDeviceSynchronize();
+
+    // Step 5
+    int post_smoothing_iter2 = simpleSolver(H, W, d_divG, args[0], args+6, args[1], args[4], args[5], d_I_log);
+    cudaDeviceSynchronize();
+
+    cudaFree(d_r_h);
+    cudaFree(d_r_2h);
+    cudaFree(d_E_2h);
+    cudaFree(d_E_h);
+
+    return pre_smoothing_iter + post_smoothing_iter1 + post_smoothing_iter2 + cycle_smoothing_iter1 + cycle_smoothing_iter2;
 }
 
 
