@@ -208,8 +208,8 @@ def solve_poisson_equation_cuda(div_G, args):
     if args.method > 4:
         solve_args = [
             2, # v, w, f - cycle
-            7, # pre/post smoothing iterations
-            50, # coarsest level side length
+            5, # pre/post smoothing iterations
+            300, # coarsest level side length
             1000, # coarsest iterations
             5, # coarsest check frequency
             1e-4, # coarsest tolerance
@@ -303,8 +303,8 @@ if __name__ == "__main__":
     output_norm = (normalize(output) * 255.0).astype(np.uint8)[:, :, ::-1]
     output_norm_gamma = (normalize(np.power(output, 1.0 / args.gamma)) * 255.0).astype(np.uint8)[:, :, ::-1]
 
-    output_linear = (normalize(hdr_rad_map_rgb) * 255.0).astype(np.uint8)[:, :, ::-1]
-    output_gamma = (normalize(np.power(hdr_rad_map_rgb, 1.0 / args.gamma)) * 255.0).astype(np.uint8)[:, :, ::-1]
+    # output_linear = (normalize(hdr_rad_map_rgb) * 255.0).astype(np.uint8)[:, :, ::-1]
+    # output_gamma = (normalize(np.power(hdr_rad_map_rgb, 1.0 / args.gamma)) * 255.0).astype(np.uint8)[:, :, ::-1]
 
     # save the output
     # cv2.imwrite(f"{args.output_folder}/{args.method}_{args.source.split('/')[-1][:-4]}_ldr_clip.png", output_clip)
@@ -313,7 +313,7 @@ if __name__ == "__main__":
     cv2.imwrite(f"{args.output_folder}/{args.method}_{args.source.split('/')[-1][:-4]}_ldr_norm.png", output_norm)
     cv2.imwrite(f"{args.output_folder}/{args.method}_{args.source.split('/')[-1][:-4]}_ldr_norm_gamma.png", output_norm_gamma)
 
-    cv2.imwrite(f"{args.output_folder}/{args.source.split('/')[-1][:-4]}_ldr_linear.png", output_linear)
-    cv2.imwrite(f"{args.output_folder}/{args.source.split('/')[-1][:-4]}_ldr_gamma.png", output_gamma)
+    # cv2.imwrite(f"{args.output_folder}/{args.source.split('/')[-1][:-4]}_ldr_linear.png", output_linear)
+    # cv2.imwrite(f"{args.output_folder}/{args.source.split('/')[-1][:-4]}_ldr_gamma.png", output_gamma)
 
     print("Done.")
