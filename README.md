@@ -3,7 +3,7 @@ Implementation of Gradient Domain HDR Compression in CUDA.
 
 Gamma vs Gradient Domain Compression
 
-<img src="output/5_bigFogMap_ldr_gamma.png" width="400"/>  <img src="output/5_bigFogMap_ldr_norm.png" width="400"/>
+<img src="output/bigFogMap_ldr_gamma.png" width="400"/>  <img src="output/5_bigFogMap_ldr_norm.png" width="400"/>
 
 Attenuation map of the Belgium House scene.
 
