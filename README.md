@@ -1,10 +1,12 @@
 # Gradient Domain HDR Compression in CUDA
 
-This is Runfeng's final project for APMA2822B Introduction to Parallel Computing and part of his final project for CSCI1290 Computational Photography at Brown to enable fast HDR tonemapping for real-time novel HDR view synthesis with 3DGS.
+This is Runfeng's final project for <text style="color:violet"> _"APMA2822B Introduction to Parallel Computing"_</text>, and part of his final project for <text style="color:limegreen">_"CSCI1290 Computational Photography"_</text> at Brown to explore HDR tonemapping for real-time novel HDR view synthesis with 3DGS.
 
-The current best performance is about 150 milliseconds for the sample images in data folder. Unfortunately, this simple parallelization has not achieved real-time performance, though many parts could still be improved.
+- The fastest <b style="color:orange">poisson solver</b> should take about <b style="color:orange">5 - 10 milliseconds for 1k-2k images</b>. 
+- But the current entire <b style="color:orange">HDRC pipeline</b> would still take about <b style="color:orange">150 milliseconds</b>. 
+- The main <text style="color:red">bottlenecks</text> are in the other parts, like <text style="color:red">attenuating gradients</text> and <text style="color:red">building the image pyramids</text>, which could be potentially improved by implementing <text style="color:red">more customized CUDA kernels</text> instead of just using torch tensors (maybe?).
 
-Gamma vs Gradient Domain Compression (V-Cycle)
+gamma VS gradient domain compression (V-Cycle)
 
 <img src="output/belgium_ldr_gamma.png" width="400"/>  <img src="output/all_cuda_belgium_ldr.png" width="400"/>
 
