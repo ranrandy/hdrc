@@ -1,5 +1,7 @@
 # HDRC
-Implementation of Gradient Domain HDR Compression in CUDA.
+Implementation of Gradient Domain HDR Compression in CUDA. 
+
+This is Runfeng's final project for APMA2822B Introduction to Parallel Computing and part of his final project for CSCI1290 Computational Photography at Brown to enable fast HDR tonemapping for real-time novel HDR view synthesis with 3DGS.
 
 Gamma vs Gradient Domain Compression (V-Cycle)
 
