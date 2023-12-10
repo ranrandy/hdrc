@@ -37,7 +37,7 @@ int main(int argc, char* argv[]) {
     
     if (method <= 4) 
     {
-        float omega = (argc == 8) ? std::stof(argv[7]) : 1.45;
+        float omega = (argc == 8) ? std::stof(argv[7]) : 1.90;
 
         cudaMallocHost(&args, 1 * sizeof(float));
         args[0] = omega;
@@ -55,7 +55,7 @@ int main(int argc, char* argv[]) {
         int checkCoarsestFrequency = std::stoi(argv[11]);
         float CoarsestTolerance = std::stof(argv[12]);
         
-        float omega = (argc == 14) ? std::stof(argv[13]) : 1.45;
+        float omega = (argc == 14) ? std::stof(argv[13]) : 1.90;
 
         cudaMallocHost(&args, 7 * sizeof(float));
         args[0] = multigridSmoothingMethod;
@@ -169,7 +169,7 @@ int main(int argc, char* argv[]) {
         error += fabs(h_I_log[i] - function2d._f[i]);
     }
     error /= H * W;
-    std::cout << "Error: " << std::setprecision (6) << error << std::endl;
+    std::cout << "Error: " << std::setprecision (16) << error << std::endl;
     std::cout << "Number of iteration until convergence: " << std::setprecision (6) << iter_converge << std::endl;
     std::cout << std::endl;
 

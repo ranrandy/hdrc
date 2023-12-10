@@ -190,13 +190,12 @@ def solve_poisson_equation(div_G, args):
         
         result, current = current, result
 
-        if iter % 200 == 0:
+        if iter % args.check_frequency == 0:
             error = np.sum(np.abs(current - result)) / (H * W)
             # print(error)
             if error < args.tolerance:
                 break
-    if iter % 2 == 1:
-        result, current = current, result
+    result = current
     return result, iter
 
 def solve_poisson_equation_cuda(div_G, args):
@@ -204,7 +203,7 @@ def solve_poisson_equation_cuda(div_G, args):
     d_div_G = torch.from_numpy(div_G).float().cuda()
     
     result = torch.full((H, W), 0.0).float()
-    solve_args = []
+    solve_args = [1.8]
     if args.method > 4:
         solve_args = [
             2, # v, w, f - cycle
@@ -213,7 +212,7 @@ def solve_poisson_equation_cuda(div_G, args):
             1000, # coarsest iterations
             5, # coarsest check frequency
             1e-4, # coarsest tolerance
-            # 1.45 # omega/w for SOR
+            # 1.90 # omega/w for SOR
         ]
     iter_until_converge = solve(
         H, W, d_div_G, 
@@ -227,14 +226,14 @@ def normalize(img):
 
 if __name__ == "__main__":
     arg_parser = argparse.ArgumentParser(description="Gradient Domain HDR Radiance Map Tone Mapping")
-    arg_parser.add_argument("--source", type=str, default="data/bigFogMap.hdr", help="Source HDR radiance map path")
+    arg_parser.add_argument("--source", type=str, default="data/belgium.hdr", help="Source HDR radiance map path")
     arg_parser.add_argument("--output_folder", type=str, default="output", help="Output LDR image folder")
     arg_parser.add_argument("--save_att", action="store_true", help="Save gradient attenuation map")
     arg_parser.add_argument("--alpha", type=float, default=0.18, help="Max \"small\" gradient")
     arg_parser.add_argument("--beta", type=float, default=0.87, help="Attenuation factor for large gradients")
     arg_parser.add_argument("--saturation", type=float, default=0.55, help="Color saturation of the resulting image")
-    arg_parser.add_argument("--max_iterations", type=int, default=1, help="Max number of iterations to run the Jacobi Poisson solver")
-    arg_parser.add_argument("--check_frequency", type=int, default=2, help="Number of iterations to check if satisfy the tolerance")
+    arg_parser.add_argument("--max_iterations", type=int, default=10000, help="Max number of iterations to run the Jacobi Poisson solver")
+    arg_parser.add_argument("--check_frequency", type=int, default=1, help="Number of iterations to check if satisfy the tolerance")
     arg_parser.add_argument("--tolerance", type=float, default=1e-4, help="Tolerance to stop iterating the Jacobi Poisson solver")
     arg_parser.add_argument("--gamma", type=float, default=2.2, help="Global gamma tone mapping")
     arg_parser.add_argument("--cuda", action="store_true", help="Use CUDA optimized poisson solver")

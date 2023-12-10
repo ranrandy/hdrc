@@ -37,7 +37,7 @@ int solve(
         assert (args.size() == 0 || args.size() == 1);
 
         cudaMallocHost(&arguments, 1 * sizeof(float));
-        arguments[0] = (args.size() == 1) ? args[0] : 1.45;
+        arguments[0] = (args.size() == 1) ? args[0] : 1.90;
 
         // std::cout << "omega: " << arguments[0] << std::endl;
         
@@ -57,7 +57,7 @@ int solve(
 
         cudaMallocHost(&arguments, 7 * sizeof(float));
         for (int i = 0; i < args.size(); ++i) arguments[i] = args[i];
-        arguments[6] = (args.size() == 7) ? args[0] : 1.45;
+        arguments[6] = (args.size() == 7) ? args[0] : 1.90;
 
         // std::cout << "multigridSmoothingMethod: " << arguments[0] << std::endl; 
         // std::cout << "prepostSmoothingIterations: " << arguments[1] << std::endl; 
