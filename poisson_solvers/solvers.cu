@@ -376,7 +376,7 @@ __global__ void blackGaussSeidelKernel2SOR(const int H, const int W, const float
 void gaussSeidelRedBlack2SOR(const int H, const int W, const float* d_divG, const dim3 nblocks, const dim3 nthreads, float* red, float* black, const float* args)
 {
     redGaussSeidelKernel2SOR<<<nblocks, nthreads>>>(H, W, d_divG, black, red, args[0]);
-    blackGaussSeidelKernel2SOR<<<nblocks, nthreads>>>(H, W, d_divG, red, black, H * W / 2, args[0]);
+    blackGaussSeidelKernel2SOR<<<nblocks, nthreads>>>(H, W, d_divG, red, black, std::ceil(H / 2.0) * W, args[0]);
 }
 
 
