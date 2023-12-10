@@ -1,13 +1,17 @@
 # HDRC
 Implementation of Gradient Domain HDR Compression in CUDA.
 
-Gamma vs Gradient Domain Compression
+Gamma vs Gradient Domain Compression (V-Cycle)
 
-<img src="output/bigFogMap_ldr_gamma.png" width="400"/>  <img src="output/7_bigFogMap_ldr_norm.png" width="400"/>
+<img src="output/belgium_ldr_gamma.png" width="400"/>  <img src="output/5_belgium_ldr_clip.png" width="400"/>
 
-Attenuation map of the Belgium House scene.
+<img src="output/bigFogMap_ldr_gamma.png" width="400"/>  <img src="output/5_bigFogMap_ldr_clip.png" width="400"/>
+
+Attenuation maps.
 
 <img src="./output/belgium_attenuation.png" alt="belgium_attenuation" width="400">
+
+<img src="./output/bigFogMap_attenuation.png" alt="belgium_attenuation" width="400">
 
 ## Poisson Solver
 Install the poisson solvers as a Python package (PyTorch is required)
@@ -47,10 +51,11 @@ measure: 1 for testing. 20 for measuring.
 ```
 
 ## Remarks
-1. The code is only tested on (H = 1200, W = 1600) and the two sample .hdr images.
-2. The code is tested on Windows 10, Python 3.7, CUDA Toolkits 11.8 with a NVIDIA 4060Ti GPU.
-3. Recovering the sample function (sin(pi/100*(x+y))) used for dubugging purpose may not benefit from using multigrid methods, because the grid elements have the same frequency. Multigrid methods would be beneficial if we have different frequencies of signals in the grid.
-4. Because sending the divG to the device (GPU) would be very time consuming, about 100 milliseconds, but solving the poisson equation only needs <10 milliseconds, and if we want to apply this code as part of a real-time tonemapper which tonemaps RAW HDR images to LDR images in real-time on GPU, the "divG" in that case would already be on GPU --> We ignore the large amount of time spent on sending divG to GPU in the Python part. Instead, we measure the time spent on solving the poisson equation in the pycall.cu file.
+1. The code is tested on Windows 10, Python 3.7, CUDA Toolkits 11.8 with a NVIDIA 4060Ti GPU.
+2. Recovering the sample function (sin(pi/100*(x+y))) used for dubugging purpose may not benefit from using multigrid methods, because the grid elements have the same frequency. Multigrid methods would be beneficial if we have different frequencies of signals in the grid.
+3. Because sending the divG to the device (GPU) would be very time consuming, about 100 milliseconds, but solving the poisson equation only needs <10 milliseconds, and if we want to apply this code as part of a real-time tonemapper which tonemaps RAW HDR images to LDR images in real-time on GPU, the "divG" in that case would already be on GPU --> We ignore the large amount of time spent on sending divG to GPU in the Python part. Instead, we measure the time spent on solving the poisson equation in the pycall.cu file.
+4. The default parameters in hdrc.py should produce the best result I could get for both the Belgium and bigFogMap scenes. I normalized the luminance after solving the poisson equation. This may be the reason why we can't see the large reflections on the car's windows in the bigFogMap scene, but not doing this would produce very bright result for the bigFogMap scene. More efforts should be made on finetuning the parameters and the way to get output.
+5. The multigrid methods may have better results if optimized on CPU.
 
 ## References
 Fattal, R., Lischinski, D., & Werman, M. (2023). _Gradient domain high dynamic range compression._ In Seminal Graphics Papers: Pushing the Boundaries, Volume 2 (pp. 671-678).
