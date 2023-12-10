@@ -5,14 +5,20 @@
 #include <cmath>
 #include <vector>
 
-
 // Build the gaussian pyramid
-at::Tensor createGaussianKernel(int kernel_size, double std);
+torch::Tensor createGaussianKernel(const int kernel_size, const float sigma);
 
-at::Tensor gaussianBlur(const at::Tensor& input, int H, int W, int kernel_size, double std);
+torch::Tensor gaussianBlur(const torch::Tensor& input, const int H, const int W, const int kernel_size, const float sigma);
 
-std::vector<at::Tensor> buildGaussianPyramid(at::Tensor image, int H, int W, int levels);
+std::vector<torch::Tensor> buildGaussianPyramid(const torch::Tensor& image, const int levels, const int H, const int W);
 
+// Calculate scalings
+torch::Tensor calculateScalings(const torch::Tensor& pyramid_i, const int level, const float alpha, const float beta);
 
+// Calculate attenuated divergence
+torch::Tensor calculateAttenuatedDivergence(torch::Tensor lum_log, torch::Tensor phi);
+
+// Min-max
+torch::Tensor normalize(torch::Tensor input);
 
 #endif

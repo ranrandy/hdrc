@@ -70,9 +70,6 @@ int solve(
         // std::cout << std::endl; 
         // std::cout << "omega: " << arguments[6] << std::endl;
 
-        // Start timer
-        cudaEventRecord(start);
-
         iter_converge = multigridSolver(
             H, W, d_div_G.contiguous().data<float>(),
             method, arguments,

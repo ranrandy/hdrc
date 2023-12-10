@@ -1,8 +1,9 @@
 #pragma once
 #include <algorithm>
 #include <torch/extension.h>
-#include "utils/compressor.h"
-#include "utils/utils.h"
+#include <tuple>
+#include "utils\\utils.h"
+#include "poisson_solvers\\solvers.h"
 
 /*
 hdr_rad_map:
@@ -10,7 +11,7 @@ hdr_rad_map:
     HDR radiance map output from the RawGS.
     Ideally noise-free.
     Already demoisacked.
-    Already on GPU.
+    Already on GPU. (This has not been integrated)
 */
 torch::Tensor hdrcCUDA(
     const torch::Tensor& hdr_rad_map, 

@@ -13,15 +13,14 @@ set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${TORCH_CXX_FLAGS} -g")
 add_library(HDRC
     hdrc.h
     hdrc.cu
-    utils/compressor.h
-    utils/compressor.cu
     utils/utils.h
     utils/utils.cu
-    poisson_solver/solver.h
-    poisson_solver/solver.cu
+    poisson_solvers/solvers.h
+    poisson_solvers/solvers.cu
 )
 
 set_target_properties(HDRC PROPERTIES CUDA_ARCHITECTURES "70;75;86")
 
 target_include_directories(HDRC PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}\\utils)
+target_include_directories(HDRC PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}\\poisson_solvers)
 target_include_directories(HDRC PRIVATE . ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES})

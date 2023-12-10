@@ -17,6 +17,7 @@ from skimage import filters
 from scipy.sparse import csr_matrix
 from tqdm import tqdm
 from poisson_solvers._C import solve
+from hdrc._C import hdrcCUDA
 import time
 
 def build_gaussian_pyramid(img):
@@ -227,7 +228,7 @@ def normalize(img):
 if __name__ == "__main__":
     arg_parser = argparse.ArgumentParser(description="Gradient Domain HDR Radiance Map Tone Mapping")
     arg_parser.add_argument("--source", type=str, default="data/belgium.hdr", help="Source HDR radiance map path")
-    arg_parser.add_argument("--output_folder", type=str, default="output", help="Output LDR image folder")
+    arg_parser.add_argument("--output_folder", type=str, default="output_debug", help="Output LDR image folder")
     arg_parser.add_argument("--save_att", action="store_true", help="Save gradient attenuation map")
     arg_parser.add_argument("--alpha", type=float, default=0.10, help="Max \"small\" gradient")
     arg_parser.add_argument("--beta", type=float, default=0.90, help="Attenuation factor for large gradients")
@@ -296,29 +297,12 @@ if __name__ == "__main__":
         output[:, :, c] = (hdr_rad_map_rgb[:, :, c] / hdr_rad_map_xyz[:, :, 1]) ** args.saturation * I
 
     # Rescale the output
-    output_clip = (np.clip(output, 0.0, 1.0) * 255.0).astype(np.uint8)[:, :, ::-1]
-    # output_clip_gamma = (np.clip(np.power(output, 1.0 / args.gamma), 0.0, 1.0) * 255.0).astype(np.uint8)[:, :, ::-1]
-    
-    # output_norm = (normalize(output) * 255.0).astype(np.uint8)[:, :, ::-1]
-    # output_norm_gamma = (normalize(np.power(output, 1.0 / args.gamma)) * 255.0).astype(np.uint8)[:, :, ::-1]
-
-    output_linear = (normalize(hdr_rad_map_rgb) * 255.0).astype(np.uint8)[:, :, ::-1]
-    output_gamma = (normalize(np.power(hdr_rad_map_rgb, 1.0 / args.gamma)) * 255.0).astype(np.uint8)[:, :, ::-1]
+    output = (np.clip(output, 0.0, 1.0) * 255.0).astype(np.uint8)[:, :, ::-1]
 
     # save the output
-
     if args.cuda:
-        cv2.imwrite(f"{args.output_folder}/{args.method}_{args.source.split('/')[-1][:-4]}_ldr_clip.png", output_clip)
-        # cv2.imwrite(f"{args.output_folder}/{args.method}_{args.source.split('/')[-1][:-4]}_ldr_clip_gamma.png", output_clip_gamma)
-        # cv2.imwrite(f"{args.output_folder}/{args.method}_{args.source.split('/')[-1][:-4]}_ldr_norm.png", output_norm)
-        # cv2.imwrite(f"{args.output_folder}/{args.method}_{args.source.split('/')[-1][:-4]}_ldr_norm_gamma.png", output_norm_gamma)
+        cv2.imwrite(f"{args.output_folder}/{args.method}_{args.source.split('/')[-1][:-4]}_ldr.png", output)
     else:
-        cv2.imwrite(f"{args.output_folder}/0_py_{args.source.split('/')[-1][:-4]}_ldr_clip.png", output_clip)
-        # cv2.imwrite(f"{args.output_folder}/0_py_{args.source.split('/')[-1][:-4]}_ldr_clip_gamma.png", output_clip_gamma)
-        # cv2.imwrite(f"{args.output_folder}/0_py_{args.source.split('/')[-1][:-4]}_ldr_norm.png", output_norm)
-        # cv2.imwrite(f"{args.output_folder}/0_py_{args.source.split('/')[-1][:-4]}_ldr_norm_gamma.png", output_norm_gamma)
-
-    cv2.imwrite(f"{args.output_folder}/{args.source.split('/')[-1][:-4]}_ldr_linear.png", output_linear)
-    cv2.imwrite(f"{args.output_folder}/{args.source.split('/')[-1][:-4]}_ldr_gamma.png", output_gamma)
+        cv2.imwrite(f"{args.output_folder}/0_py_{args.source.split('/')[-1][:-4]}_ldr.png", output)
 
     print("Done.")

@@ -26,10 +26,10 @@ if __name__ == "__main__":
         # CUDA
         for i in range(5):
             os.system(f"echo {sep}")
-            os.system(f"python hdrc.py --source {fp} --save_att --cuda --method {i}")
+            os.system(f"python main_python.py --source {fp} --save_att --cuda --method {i}")
         for i in range(5, 8):
             os.system(f"echo {sep}")
-            os.system(f"python hdrc.py --source {fp} --save_att --cuda --method {i} --max_iterations 1 --check_frequency 10")
+            os.system(f"python main_python.py --source {fp} --save_att --cuda --method {i} --max_iterations 1 --check_frequency 10")
         # Python
         os.system(f"echo {sep}")
-        os.system("python hdrc.py --save_att --method 0")
+        os.system("python main_python.py --save_att --method 0")

@@ -11,38 +11,74 @@ torch::Tensor hdrcCUDA(
     const int L = int(std::min(std::log(H / 32), std::log(W / 32))) + 1;
 
     auto float_opts = torch::TensorOptions().dtype(torch::kFloat32);
-
-    torch::Tensor out_log_lum = torch::full({H, W}, 0.0, torch::kFloat32);
     
     // Convert color from RGB space to log of luminance, because HDR
     torch::Tensor luminanceCoeffs = torch::tensor({0.2126729, 0.7151522, 0.0721750}, float_opts).view({3, 1, 1});
     torch::Tensor hdr_lum = torch::sum(hdr_rad_map_rgb * luminanceCoeffs, 0);
     torch::Tensor hdr_log_lum = torch::log(hdr_lum);
-
+    
     // Create the gaussian pyramid. Finest at the bottom[0]. Coarsest at the top[L-1].
-    std::vector<at::Tensor> pyramid = buildGaussianPyramid(hdr_log_lum, H, W, L);
+    std::vector<torch::Tensor> pyramid = buildGaussianPyramid(hdr_log_lum, L, H, W);
 
     // Calculate the scaling factor at each of level of the pyramid
+    std::vector<torch::Tensor> scaling_factor_pyramid;
+    for (int level = 0; level < pyramid.size(); ++level) {
+        scaling_factor_pyramid.push_back(calculateScalings(pyramid[level], level, alpha, beta));
+    }
 
     // Calculate the attenuation at the finest level (starting from the coarsest level).
+    torch::Tensor attenuation = scaling_factor_pyramid.back();
+    for (int level = scaling_factor_pyramid.size() - 2; level >= 0; --level) {
+        auto target_size = scaling_factor_pyramid[level].sizes();
+        auto resized_attenuation = torch::nn::functional::interpolate(
+            attenuation.unsqueeze(0).unsqueeze(0), 
+            torch::nn::functional::InterpolateFuncOptions()
+                .size(std::vector<int64_t>{target_size[0], target_size[1]})
+                .mode(torch::kBilinear)
+                .align_corners(false)
+            ).squeeze(0).squeeze(0);
+        attenuation = resized_attenuation * scaling_factor_pyramid[level];
+    }
 
+    // Calculate attenuated gradients, namely G(x, y)
+    torch::Tensor d_div_G = calculateAttenuatedDivergence(hdr_log_lum, attenuation).to(torch::kCUDA);
 
-    // // # Calculate attenuated gradients, namely G(x, y)
-    // // attenuated_grad_x, attenuated_grad_y = calculate_attenuated_gradients(hdr_lum_log, attenuation)
+    // Solve the poisson equation
+    torch::Tensor h_I_log = torch::full({H, W}, 0.0, float_opts);
 
-    // // # Calculate \Div{G(x, y)}
-    // // div_G = calculate_divergence(attenuated_grad_x, attenuated_grad_y)
+    float* arguments;
 
-    // // # Solve the Poisson linear equations to find I(x, y) from G(x, y) using the Jacobi iteration method
-    // // I_log = solve_poisson_equation(div_G, args)
-    // // Apply gradient domain HDR compression. Line 189-215 in hdrc.py.
+    float *d_I_log;
+    cudaMalloc(&d_I_log, H * W * sizeof(float));
+    cudaMemset(d_I_log, 0.0, H * W * sizeof(float));
 
-    // HDRC::DynamicRangeCompressor::compress(alpha, beta, H, W,
-    //     hdr_log_lum.contiguous().data_ptr<float>(),
-    //     out_log_lum.contiguous().data_ptr<float>()
-    // );
+    int iter_converge = 0;
+
+    cudaMallocHost(&arguments, 7 * sizeof(float));
+    arguments[0] = 3;
+    arguments[1] = 20;
+    arguments[2] = 100;
+    arguments[3] = 1000;
+    arguments[4] = 5;
+    arguments[5] = 0.0001;
+    arguments[6] = 1.45;
+
+    iter_converge = multigridSolver(
+        H, W, d_div_G.contiguous().data<float>(),
+        5, arguments,
+        1, 10, 0.0001,
+        d_I_log);
+    cudaDeviceSynchronize();
+
+    cudaMemcpy(h_I_log.contiguous().data<float>(), d_I_log, H * W * sizeof(float), cudaMemcpyDeviceToHost);
+    cudaDeviceSynchronize();
+
+    cudaFree(d_I_log);
+    cudaFreeHost(arguments);
+
+    torch::Tensor I = normalize(torch::exp(h_I_log));
 
     // Generate the LDR output
-    torch::Tensor ldr_out_color = torch::pow(torch::div(hdr_rad_map_rgb, hdr_lum.unsqueeze(-1)), saturation) * torch::exp(out_log_lum);
-    return ldr_out_color;
+    torch::Tensor ldr_out_color = torch::pow(torch::div(hdr_rad_map_rgb, hdr_lum.unsqueeze(0)), saturation) * I;
+    return (torch::clamp(ldr_out_color, 0.0, 1.0) * 255).to(torch::kUInt8);
 }
