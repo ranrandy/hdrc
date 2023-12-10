@@ -203,16 +203,16 @@ def solve_poisson_equation_cuda(div_G, args):
     d_div_G = torch.from_numpy(div_G).float().cuda()
     
     result = torch.full((H, W), 0.0).float()
-    solve_args = [1.8]
+    solve_args = [1.45]
     if args.method > 4:
         solve_args = [
-            2, # v, w, f - cycle
+            3, # v, w, f - cycle
             5, # pre/post smoothing iterations
-            300, # coarsest level side length
+            200, # coarsest level side length
             1000, # coarsest iterations
             5, # coarsest check frequency
             1e-4, # coarsest tolerance
-            # 1.90 # omega/w for SOR
+            1.45 # omega/w for SOR
         ]
     iter_until_converge = solve(
         H, W, d_div_G, 
@@ -296,23 +296,27 @@ if __name__ == "__main__":
         output[:, :, c] = (hdr_rad_map_rgb[:, :, c] / hdr_rad_map_xyz[:, :, 1]) ** args.saturation * I
 
     # Rescale the output
-    output_clip = (np.clip(output, 0.0, 1.0) * 255.0).astype(np.uint8)[:, :, ::-1]
-    output_clip_gamma = (np.clip(np.power(output, 1.0 / args.gamma), 0.0, 1.0) * 255.0).astype(np.uint8)[:, :, ::-1]
+    # output_clip = (np.clip(output, 0.0, 1.0) * 255.0).astype(np.uint8)[:, :, ::-1]
+    # output_clip_gamma = (np.clip(np.power(output, 1.0 / args.gamma), 0.0, 1.0) * 255.0).astype(np.uint8)[:, :, ::-1]
     
     output_norm = (normalize(output) * 255.0).astype(np.uint8)[:, :, ::-1]
     output_norm_gamma = (normalize(np.power(output, 1.0 / args.gamma)) * 255.0).astype(np.uint8)[:, :, ::-1]
 
-    # output_linear = (normalize(hdr_rad_map_rgb) * 255.0).astype(np.uint8)[:, :, ::-1]
-    # output_gamma = (normalize(np.power(hdr_rad_map_rgb, 1.0 / args.gamma)) * 255.0).astype(np.uint8)[:, :, ::-1]
+    output_linear = (normalize(hdr_rad_map_rgb) * 255.0).astype(np.uint8)[:, :, ::-1]
+    output_gamma = (normalize(np.power(hdr_rad_map_rgb, 1.0 / args.gamma)) * 255.0).astype(np.uint8)[:, :, ::-1]
 
     # save the output
     # cv2.imwrite(f"{args.output_folder}/{args.method}_{args.source.split('/')[-1][:-4]}_ldr_clip.png", output_clip)
     # cv2.imwrite(f"{args.output_folder}/{args.method}_{args.source.split('/')[-1][:-4]}_ldr_clip_gamma.png", output_clip_gamma)
 
-    cv2.imwrite(f"{args.output_folder}/{args.method}_{args.source.split('/')[-1][:-4]}_ldr_norm.png", output_norm)
-    cv2.imwrite(f"{args.output_folder}/{args.method}_{args.source.split('/')[-1][:-4]}_ldr_norm_gamma.png", output_norm_gamma)
+    if args.cuda:
+        cv2.imwrite(f"{args.output_folder}/{args.method}_{args.source.split('/')[-1][:-4]}_ldr_norm.png", output_norm)
+        cv2.imwrite(f"{args.output_folder}/{args.method}_{args.source.split('/')[-1][:-4]}_ldr_norm_gamma.png", output_norm_gamma)
+    else:
+        cv2.imwrite(f"{args.output_folder}/0_py_{args.source.split('/')[-1][:-4]}_ldr_norm.png", output_norm)
+        cv2.imwrite(f"{args.output_folder}/0_py_{args.source.split('/')[-1][:-4]}_ldr_norm_gamma.png", output_norm_gamma)
 
-    # cv2.imwrite(f"{args.output_folder}/{args.source.split('/')[-1][:-4]}_ldr_linear.png", output_linear)
-    # cv2.imwrite(f"{args.output_folder}/{args.source.split('/')[-1][:-4]}_ldr_gamma.png", output_gamma)
+    cv2.imwrite(f"{args.output_folder}/{args.source.split('/')[-1][:-4]}_ldr_linear.png", output_linear)
+    cv2.imwrite(f"{args.output_folder}/{args.source.split('/')[-1][:-4]}_ldr_gamma.png", output_gamma)
 
     print("Done.")
