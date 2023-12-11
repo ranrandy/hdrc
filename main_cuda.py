@@ -27,7 +27,7 @@ if __name__ == "__main__":
     # Read HDR radiance map
     hdr_rad_map_rgb = cv2.imread(args.source, cv2.IMREAD_UNCHANGED)[:, :, ::-1]
 
-    flipped_hdr_rad_map_rgb = torch.tensor(hdr_rad_map_rgb.transpose(2, 0, 1).copy())
+    flipped_hdr_rad_map_rgb = torch.tensor(hdr_rad_map_rgb.transpose(2, 0, 1).copy()).to(torch.float32)
     
     # Start Timer
     start_time = time.time()

@@ -15,8 +15,13 @@ torch::Tensor hdrcCUDA(
     // Convert color from RGB space to log of luminance, because HDR
     torch::Tensor luminanceCoeffs = torch::tensor({0.2126729, 0.7151522, 0.0721750}, float_opts).view({3, 1, 1});
     torch::Tensor hdr_lum = torch::sum(hdr_rad_map_rgb * luminanceCoeffs, 0);
+    hdr_lum = torch::where(hdr_lum == 0.0, torch::tensor(1e-6), hdr_lum);
     torch::Tensor hdr_log_lum = torch::log(hdr_lum);
-    
+
+    // std::cout << "Mean: " << torch::mean(hdr_lum).item<float>() << ", " << torch::mean(hdr_log_lum).item<float>() << std::endl;
+    // std::cout << "Min: " << torch::min(hdr_lum).item<float>() << ", " << torch::min(hdr_log_lum).item<float>() << std::endl;
+    // std::cout << "Max: " << torch::max(hdr_lum).item<float>() << ", " << torch::max(hdr_log_lum).item<float>() << std::endl;
+
     // Create the gaussian pyramid. Finest at the bottom[0]. Coarsest at the top[L-1].
     std::vector<torch::Tensor> pyramid = buildGaussianPyramid(hdr_log_lum, L, H, W);
 
@@ -76,9 +81,25 @@ torch::Tensor hdrcCUDA(
     cudaFree(d_I_log);
     cudaFreeHost(arguments);
 
+    // std::cout << "h_I_log: " 
+    //           << torch::mean(h_I_log).item<float>() << ", " 
+    //           << torch::min(h_I_log).item<float>() << ", " 
+    //           << torch::max(h_I_log).item<float>() << std::endl;
+
     torch::Tensor I = normalize(torch::exp(h_I_log));
+
+    // std::cout << "I: " 
+    //           << torch::mean(I).item<float>() << ", " 
+    //           << torch::min(I).item<float>() << ", " 
+    //           << torch::max(I).item<float>() << std::endl;
 
     // Generate the LDR output
     torch::Tensor ldr_out_color = torch::pow(torch::div(hdr_rad_map_rgb, hdr_lum.unsqueeze(0)), saturation) * I;
+
+    // std::cout << "ldr_out_color: " 
+    //           << torch::mean(ldr_out_color).item<float>() << ", " 
+    //           << torch::min(ldr_out_color).item<float>() << ", " 
+    //           << torch::max(ldr_out_color).item<float>() << std::endl;
+
     return (torch::clamp(ldr_out_color, 0.0, 1.0) * 255).to(torch::kUInt8);
 }
